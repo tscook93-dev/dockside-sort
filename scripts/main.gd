@@ -1,6 +1,7 @@
 extends Control
 
 const PuzzleScript := preload("res://scripts/puzzle.gd")
+const ProgressScript := preload("res://scripts/progress.gd")
 const Glyph := preload("res://scripts/glyph_button.gd")
 const Berth := preload("res://scripts/berth_button.gd")
 
@@ -24,6 +25,8 @@ const GLYPHS := {
 var levels: Array = []
 var level_index := 0
 var puzzle
+var progress = ProgressScript.new()
+var last_clear := {}
 var deck_height := 0
 var sel_kind := ""
 var sel_index := -1
@@ -44,21 +47,31 @@ var berth_buttons: Array = []
 var modal: Control
 var modal_title: Label
 var modal_body: Label
+var star_row: HBoxContainer
 var primary_button: Button
 var secondary_button: Button
+var list_button: Button
+
+var screens: Control
+var play_root: Control
+var home_root: Control
+var settings_root: Control
+var home_list: VBoxContainer
+var home_coins: Label
+var settings_note: Label
+var sound_button: Button
+var haptics_button: Button
 
 
 func _ready() -> void:
 	DisplayServer.window_set_title("Dockside Sort: Cargo Puzzle")
+	progress.load_file()
 	_build_chrome()
 	for path in PuzzleScript.list_level_paths():
 		var data: Dictionary = PuzzleScript.load_level(path)
 		if not data.is_empty():
 			levels.append(data)
-	if levels.is_empty():
-		_set_status("No levels in res://levels.")
-		return
-	_load_current()
+	_show_home()
 	resized.connect(_apply_safe_margins)
 	_apply_safe_margins()
 
@@ -72,11 +85,32 @@ func _unhandled_input(event: InputEvent) -> void:
 	if not (event is InputEventKey and event.pressed and not event.echo):
 		return
 	var key := (event as InputEventKey).keycode
+	if settings_root != null and settings_root.visible:
+		if key == KEY_ESCAPE or key == KEY_B:
+			_show_home()
+		elif key == KEY_M:
+			_toggle_sound()
+		elif key == KEY_N:
+			_toggle_haptics()
+		return
+	if home_root != null and home_root.visible:
+		if key >= KEY_1 and key <= KEY_9:
+			_start_level(key - KEY_1)
+		elif key == KEY_S:
+			_show_settings()
+		return
 	if modal != null and modal.visible:
 		if key == KEY_ENTER or key == KEY_KP_ENTER or key == KEY_SPACE:
 			_on_primary()
+		elif key == KEY_L:
+			_show_home()
 		elif key == KEY_ESCAPE and modal_mode == "fail":
 			_undo()
+		elif key == KEY_ESCAPE and modal_mode == "win":
+			_show_home()
+		return
+	if key == KEY_ESCAPE or key == KEY_L:
+		_show_home()
 		return
 	if key >= KEY_1 and key <= KEY_9:
 		_select_column(key - KEY_1)
@@ -199,7 +233,10 @@ func _after_successful_move(how := "stacked") -> void:
 	else:
 		_set_status("Stacked.")
 	_refresh()
+	if puzzle.last_shipped != "" and progress.haptics_on and Input.has_method("vibrate_handheld"):
+		Input.vibrate_handheld(40)
 	if puzzle.is_win():
+		last_clear = progress.record_clear(level_index, int(puzzle.id), levels.size(), puzzle.undos_used, puzzle.undo_limit, puzzle.temp_slot_used)
 		_show_modal("win")
 	elif puzzle.is_soft_fail():
 		_show_modal("fail")
@@ -226,10 +263,11 @@ func _restart() -> void:
 
 
 func _next_level() -> void:
-	if levels.is_empty():
+	var nxt := level_index + 1
+	if nxt >= levels.size():
+		_show_home()
 		return
-	level_index = (level_index + 1) % levels.size()
-	_load_current()
+	_start_level(nxt)
 
 
 func _on_primary() -> void:
@@ -246,9 +284,13 @@ func _on_secondary() -> void:
 func _show_modal(mode: String) -> void:
 	modal_mode = mode
 	if mode == "win":
+		var stars := int(last_clear.get("stars", 1))
+		var gained := int(last_clear.get("coins", 0))
+		var balance := int(last_clear.get("balance", progress.coins))
 		modal_title.text = "Deck clear"
-		modal_body.text = "Everything shipped."
-		primary_button.text = "Back to level 1" if level_index == levels.size() - 1 else "Next level"
+		_paint_stars(stars)
+		modal_body.text = "%d stars\nUndos %d (3-star limit %d)\n+%d coins\nBalance %d" % [stars, puzzle.undos_used, puzzle.undo_limit, gained, balance]
+		primary_button.text = "Level list" if level_index >= levels.size() - 1 else "Next level"
 		secondary_button.text = "Replay"
 	else:
 		modal_title.text = "No moves left"
@@ -259,7 +301,151 @@ func _show_modal(mode: String) -> void:
 		primary_button.text = "Undo"
 		secondary_button.text = "Restart"
 	secondary_button.visible = true
+	star_row.visible = mode == "win"
+	list_button.visible = mode == "win"
 	modal.visible = true
+
+
+func _paint_stars(filled: int) -> void:
+	for i in star_row.get_child_count():
+		var pip := star_row.get_child(i) as ColorRect
+		pip.color = GOLD if i < filled else Color("c8bfae")
+
+
+func _start_level(index: int) -> void:
+	if index < 0 or index >= levels.size() or not progress.is_unlocked(index):
+		return
+	level_index = index
+	home_root.visible = false
+	settings_root.visible = false
+	play_root.visible = true
+	_load_current()
+
+
+func _show_home() -> void:
+	if modal != null:
+		modal.visible = false
+	if play_root != null:
+		play_root.visible = false
+	if settings_root != null:
+		settings_root.visible = false
+	if home_root != null:
+		home_root.visible = true
+	_rebuild_level_list()
+
+
+func _show_settings() -> void:
+	home_root.visible = false
+	play_root.visible = false
+	settings_root.visible = true
+	if modal != null:
+		modal.visible = false
+	_refresh_settings()
+
+
+func _toggle_sound() -> void:
+	progress.sound_on = not progress.sound_on
+	progress.save_file()
+	_refresh_settings()
+
+
+func _toggle_haptics() -> void:
+	progress.haptics_on = not progress.haptics_on
+	progress.save_file()
+	_refresh_settings()
+
+
+func _refresh_settings() -> void:
+	if sound_button == null:
+		return
+	sound_button.text = "Sound          %s" % ("On" if progress.sound_on else "Off")
+	haptics_button.text = "Haptics       %s" % ("On" if progress.haptics_on else "Off")
+
+
+func _placeholder_row(_which: String) -> void:
+	settings_note.text = "Not in this build."
+
+
+func _build_home() -> void:
+	home_root = VBoxContainer.new()
+	home_root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	home_root.add_theme_constant_override("separation", 14)
+	screens.add_child(home_root)
+	var top := HBoxContainer.new()
+	top.add_theme_constant_override("separation", 12)
+	var title := _label("DOCKSIDE SORT", 22, GOLD)
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var settings_button := _action_button("Settings", Color("d7e4ea"), INK)
+	settings_button.custom_minimum_size = Vector2(180, 72)
+	settings_button.add_theme_font_size_override("font_size", 24)
+	settings_button.pressed.connect(_show_settings)
+	top.add_child(title)
+	top.add_child(settings_button)
+	home_root.add_child(top)
+	home_coins = _label("Coins 0", 36, CREAM)
+	home_root.add_child(home_coins)
+	home_root.add_child(_label("Ships", 28, CREAM))
+	home_list = VBoxContainer.new()
+	home_list.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	home_list.add_theme_constant_override("separation", 12)
+	home_root.add_child(home_list)
+
+
+func _rebuild_level_list() -> void:
+	if home_list == null:
+		return
+	home_coins.text = "Coins %d" % progress.coins
+	_free_children(home_list)
+	for i in levels.size():
+		var data: Dictionary = levels[i]
+		var button := _action_button("", CREAM, INK)
+		button.custom_minimum_size = Vector2(0, 110)
+		button.add_theme_font_size_override("font_size", 26)
+		button.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		var title := str(data.get("title", "Level"))
+		if not progress.is_unlocked(i):
+			button.text = "%d   %s\nLocked" % [i + 1, title]
+			button.disabled = true
+			button.modulate = Color(0.55, 0.6, 0.62)
+		else:
+			var stars := progress.best_for(int(data.get("id", i + 1)))
+			var mark := "No stars yet" if stars == 0 else "%d stars" % stars
+			button.text = "%d   %s\n%s" % [i + 1, title, mark]
+			button.pressed.connect(_start_level.bind(i))
+		home_list.add_child(button)
+
+
+func _build_settings() -> void:
+	settings_root = VBoxContainer.new()
+	settings_root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	settings_root.visible = false
+	settings_root.add_theme_constant_override("separation", 12)
+	screens.add_child(settings_root)
+	settings_root.add_child(_label("Settings", 40, CREAM))
+	sound_button = _action_button("Sound", CREAM, INK)
+	sound_button.custom_minimum_size = Vector2(0, 84)
+	sound_button.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	sound_button.pressed.connect(_toggle_sound)
+	haptics_button = _action_button("Haptics", CREAM, INK)
+	haptics_button.custom_minimum_size = Vector2(0, 84)
+	haptics_button.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	haptics_button.pressed.connect(_toggle_haptics)
+	settings_root.add_child(sound_button)
+	settings_root.add_child(haptics_button)
+	for row_name in ["Privacy", "Restore purchases", "Support"]:
+		var row := _action_button("%s\nNot in this build" % row_name, Color("d7e4ea"), INK)
+		row.custom_minimum_size = Vector2(0, 84)
+		row.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		row.add_theme_font_size_override("font_size", 22)
+		row.pressed.connect(_placeholder_row.bind(row_name))
+		settings_root.add_child(row)
+	settings_note = _label("", 22, GOLD)
+	settings_root.add_child(settings_note)
+	var back := _action_button("Back", GOLD, INK)
+	back.custom_minimum_size = Vector2(0, 84)
+	back.pressed.connect(_show_home)
+	settings_root.add_child(back)
+	_refresh_settings()
 
 
 func _modal_blocking() -> bool:
@@ -274,7 +460,7 @@ func _set_status(text: String) -> void:
 func _refresh() -> void:
 	if puzzle == null:
 		return
-	moves_label.text = "Moves %d" % puzzle.moves_done
+	moves_label.text = "Undos %d" % puzzle.undos_used
 	for c in puzzle.columns.size():
 		var stack: Array = puzzle.columns[c]
 		var empties := deck_height - stack.size()
@@ -362,14 +548,28 @@ func _build_chrome() -> void:
 	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(margin)
 
-	var root_box := VBoxContainer.new()
-	root_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	root_box.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	root_box.add_theme_constant_override("separation", 12)
-	margin.add_child(root_box)
+	screens = Control.new()
+	screens.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	screens.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	margin.add_child(screens)
 
+	play_root = VBoxContainer.new()
+	play_root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	play_root.add_theme_constant_override("separation", 12)
+	screens.add_child(play_root)
+	var root_box: VBoxContainer = play_root
+
+	var kicker_row := HBoxContainer.new()
+	kicker_row.add_theme_constant_override("separation", 12)
 	var kicker := _label("DOCKSIDE SORT", 18, GOLD)
-	root_box.add_child(kicker)
+	kicker.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var levels_button := _action_button("Levels", Color("d7e4ea"), INK)
+	levels_button.custom_minimum_size = Vector2(140, 64)
+	levels_button.add_theme_font_size_override("font_size", 22)
+	levels_button.pressed.connect(_show_home)
+	kicker_row.add_child(kicker)
+	kicker_row.add_child(levels_button)
+	root_box.add_child(kicker_row)
 
 	var info := HBoxContainer.new()
 	level_label = _label("Level", 26, CREAM)
@@ -431,6 +631,8 @@ func _build_chrome() -> void:
 	bottom.add_child(_bottom_action("Undo", GOLD, INK, _undo))
 	bottom.add_child(_bottom_action("Restart", Color("d7e4ea"), INK, _restart))
 
+	_build_home()
+	_build_settings()
 	_build_modal()
 
 
@@ -462,11 +664,19 @@ func _build_modal() -> void:
 	panel.add_child(box)
 	modal_title = _label("", 40, INK)
 	modal_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	star_row = HBoxContainer.new()
+	star_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	star_row.add_theme_constant_override("separation", 12)
+	for _i in 3:
+		var pip := ColorRect.new()
+		pip.custom_minimum_size = Vector2(36, 36)
+		star_row.add_child(pip)
 	modal_body = _label("", 24, INK)
 	modal_body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	modal_body.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	modal_body.custom_minimum_size = Vector2(460, 0)
 	box.add_child(modal_title)
+	box.add_child(star_row)
 	box.add_child(modal_body)
 
 	var row := HBoxContainer.new()
@@ -481,6 +691,11 @@ func _build_modal() -> void:
 	row.add_child(primary_button)
 	row.add_child(secondary_button)
 	box.add_child(row)
+	list_button = _action_button("Level list", Color("d7e4ea"), INK)
+	list_button.custom_minimum_size = Vector2(460, 72)
+	list_button.add_theme_font_size_override("font_size", 24)
+	list_button.pressed.connect(_show_home)
+	box.add_child(list_button)
 
 
 func _bottom_action(text: String, fill: Color, ink: Color, handler: Callable) -> Control:

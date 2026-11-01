@@ -2,6 +2,7 @@
   "id": 1,
   "title": "Morning Shift",
   "blurb": "Tap the top container, then its matching stack. A full stack ships.",
+  "undo_limit": 0,
   "capacity": 3,
   "berths": ["coral", "teal", "gold"],
   "columns": [
