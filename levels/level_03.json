@@ -1,13 +1,28 @@
 {
   "id": 3,
-  "title": "Cross Load",
-  "blurb": "Same rules, a tighter load. The hold is the extra space.",
-  "undo_limit": 1,
+  "title": "Hold Lesson",
+  "blurb": "Two open stacks. Park a blocker in the hold.",
+  "undo_limit": 2,
   "capacity": 3,
-  "berths": ["", ""],
+  "berths": [
+    "",
+    ""
+  ],
   "columns": [
-    ["teal", "coral", "gold"],
-    ["teal", "gold", "coral"],
-    ["gold", "coral", "teal"]
+    [
+      "coral",
+      "gold",
+      "coral"
+    ],
+    [
+      "gold",
+      "teal",
+      "gold"
+    ],
+    [
+      "teal",
+      "coral",
+      "teal"
+    ]
   ]
 }

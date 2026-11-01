@@ -1,0 +1,34 @@
+{
+  "id": 14,
+  "title": "Two High",
+  "blurb": "Two tall piles. Tops first, then the bottoms.",
+  "undo_limit": 1,
+  "capacity": 3,
+  "berths": [
+    "",
+    ""
+  ],
+  "double_high": [
+    0,
+    1
+  ],
+  "columns": [
+    [
+      "coral",
+      "teal"
+    ],
+    [
+      "gold",
+      "coral"
+    ],
+    [
+      "teal",
+      "teal",
+      "gold"
+    ],
+    [
+      "coral",
+      "gold"
+    ]
+  ]
+}

@@ -15,11 +15,13 @@ const PALETTE := {
 	"coral": Color("e25d45"),
 	"teal": Color("1f8a80"),
 	"gold": Color("f0b429"),
+	"indigo": Color("3d4ec7"),
 }
 const GLYPHS := {
 	"coral": "circle",
 	"teal": "square",
 	"gold": "triangle",
+	"indigo": "diamond",
 }
 
 var levels: Array = []
@@ -51,6 +53,10 @@ var star_row: HBoxContainer
 var primary_button: Button
 var secondary_button: Button
 var list_button: Button
+var coach: PanelContainer
+var coach_label: Label
+var coach_lines: PackedStringArray = []
+var coach_step := 0
 
 var screens: Control
 var play_root: Control
@@ -122,6 +128,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		_on_berth(1)
 	elif key == KEY_E:
 		_on_berth(2)
+	elif key == KEY_A:
+		_on_berth(3)
 	elif key == KEY_U or key == KEY_Z:
 		_undo()
 	elif key == KEY_R or key == KEY_BACKSPACE:
@@ -139,6 +147,7 @@ func _load_current(announce := "") -> void:
 	title_label.text = puzzle.title
 	blurb_label.text = puzzle.blurb
 	_rebuild_board()
+	_begin_coach()
 	if announce == "":
 		_set_status("Tap the top container, then a stack or the hold.")
 	else:
@@ -167,6 +176,20 @@ func _on_cell(col: int, row: int) -> void:
 	if row != deck_height - stack.size():
 		_set_status("Only the top container can move.")
 		return
+	var token := str(stack[0])
+	if PuzzleScript.is_key(token):
+		var key_err: String = puzzle.collect_key(col)
+		if key_err != "":
+			_set_status(key_err)
+			return
+		sel_kind = ""
+		sel_index = -1
+		_set_status("Key collected. Locked containers can move.")
+		_after_successful_move("key")
+		return
+	if PuzzleScript.is_locked(token) and puzzle.deck_has_key():
+		_set_status("That container is locked. Collect the key first.")
+		return
 	if sel_kind == "column" and sel_index == col:
 		sel_kind = ""
 		sel_index = -1
@@ -174,7 +197,8 @@ func _on_cell(col: int, row: int) -> void:
 	else:
 		sel_kind = "column"
 		sel_index = col
-		_set_status("%s selected. Tap a stack, or the hold." % puzzle.pretty(str(stack[0])))
+		_set_status("%s selected. Tap a stack, or the hold." % puzzle.pretty(PuzzleScript.cargo_color(str(stack[0]))))
+		_note_coach("select")
 	_refresh()
 
 
@@ -197,6 +221,7 @@ func _on_berth(berth: int) -> void:
 	sel_kind = ""
 	sel_index = -1
 	_after_successful_move()
+	_note_coach("stack")
 
 
 func _on_hold() -> void:
@@ -210,6 +235,7 @@ func _on_hold() -> void:
 		sel_kind = ""
 		sel_index = -1
 		_after_successful_move("in the hold")
+		_note_coach("hold")
 		return
 	if puzzle.hold == "":
 		_set_status("Select a container, then tap the hold.")
@@ -230,6 +256,8 @@ func _after_successful_move(how := "stacked") -> void:
 		_set_status("%s shipped." % puzzle.pretty(puzzle.last_shipped))
 	elif how == "in the hold":
 		_set_status("Parked in the hold.")
+	elif how == "key":
+		pass
 	else:
 		_set_status("Stacked.")
 	_refresh()
@@ -254,6 +282,7 @@ func _undo() -> void:
 	sel_index = -1
 	_set_status("Undid the last move.")
 	_refresh()
+	_note_coach("undo")
 	if modal != null and modal.visible and not puzzle.is_soft_fail():
 		modal.visible = false
 
@@ -385,10 +414,14 @@ func _build_home() -> void:
 	home_coins = _label("Coins 0", 36, CREAM)
 	home_root.add_child(home_coins)
 	home_root.add_child(_label("Ships", 28, CREAM))
+	var scroll := ScrollContainer.new()
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	home_root.add_child(scroll)
 	home_list = VBoxContainer.new()
-	home_list.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	home_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	home_list.add_theme_constant_override("separation", 12)
-	home_root.add_child(home_list)
+	scroll.add_child(home_list)
 
 
 func _rebuild_level_list() -> void:
@@ -399,7 +432,7 @@ func _rebuild_level_list() -> void:
 	for i in levels.size():
 		var data: Dictionary = levels[i]
 		var button := _action_button("", CREAM, INK)
-		button.custom_minimum_size = Vector2(0, 110)
+		button.custom_minimum_size = Vector2(0, 88)
 		button.add_theme_font_size_override("font_size", 26)
 		button.alignment = HORIZONTAL_ALIGNMENT_LEFT
 		var title := str(data.get("title", "Level"))
@@ -448,6 +481,87 @@ func _build_settings() -> void:
 	_refresh_settings()
 
 
+func _build_coach(parent: VBoxContainer) -> void:
+	coach = PanelContainer.new()
+	coach.visible = false
+	coach.add_theme_stylebox_override("panel", _box(Color("fff4cc"), INK, 4, 16, 12))
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 12)
+	coach_label = _label("", 22, INK)
+	coach_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	coach_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var skip := _action_button("Skip", Color("d7e4ea"), INK)
+	skip.custom_minimum_size = Vector2(120, 64)
+	skip.add_theme_font_size_override("font_size", 22)
+	skip.pressed.connect(_finish_coach)
+	row.add_child(coach_label)
+	row.add_child(skip)
+	coach.add_child(row)
+	parent.add_child(coach)
+
+
+func _coach_lines_for(level_id: int) -> PackedStringArray:
+	match level_id:
+		1:
+			return PackedStringArray(["Tap the bright top container.", "Now tap its matching stack."])
+		2:
+			return PackedStringArray(["Tap a container, then tap its stack."])
+		3:
+			return PackedStringArray(["Select a container, then tap Hold to park it."])
+		4:
+			return PackedStringArray(["Undo puts the last move back."])
+	return PackedStringArray()
+
+
+func _begin_coach() -> void:
+	if coach == null or puzzle == null:
+		return
+	if progress.seen_ftue(int(puzzle.id)):
+		coach.visible = false
+		return
+	coach_lines = _coach_lines_for(int(puzzle.id))
+	coach_step = 0
+	if coach_lines.is_empty():
+		coach.visible = false
+		return
+	coach_label.text = coach_lines[0]
+	coach.visible = true
+
+
+func _note_coach(action: String) -> void:
+	if coach == null or not coach.visible or puzzle == null:
+		return
+	var want := ""
+	match int(puzzle.id):
+		1:
+			want = "select" if coach_step == 0 else "stack"
+		2:
+			want = "stack"
+		3:
+			want = "hold"
+		4:
+			want = "undo"
+	if action == want:
+		_advance_coach()
+
+
+func _advance_coach() -> void:
+	coach_step += 1
+	if coach_step >= coach_lines.size():
+		_finish_coach()
+	else:
+		coach_label.text = coach_lines[coach_step]
+
+
+func _finish_coach() -> void:
+	if coach == null or puzzle == null:
+		return
+	coach.visible = false
+	if not progress.seen_ftue(int(puzzle.id)):
+		progress.mark_ftue(int(puzzle.id))
+		progress.save_file()
+
+
 func _modal_blocking() -> bool:
 	return modal != null and modal.visible
 
@@ -472,8 +586,16 @@ func _refresh() -> void:
 				cell.modulate = Color.WHITE
 				cell.tooltip_text = "Empty cell"
 			else:
-				var color_name := str(stack[r - empties])
-				cell.show_cargo(PALETTE[color_name], GLYPHS[color_name])
+				var token_name := str(stack[r - empties])
+				var color_name := token_name
+				if PuzzleScript.is_key(token_name):
+					cell.show_cargo(Color("f2d48a"), "key")
+					color_name = "key"
+				elif PuzzleScript.is_locked(token_name):
+					color_name = PuzzleScript.cargo_color(token_name)
+					cell.show_cargo(PALETTE[color_name], GLYPHS[color_name], true)
+				else:
+					cell.show_cargo(PALETTE[color_name], GLYPHS[color_name])
 				var is_top := r == empties
 				cell.modulate = Color.WHITE if is_top else Color(0.66, 0.66, 0.66)
 				cell.set_selected(is_top and sel_kind == "column" and sel_index == c)
@@ -503,7 +625,8 @@ func _rebuild_board() -> void:
 		var col_box := VBoxContainer.new()
 		col_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		col_box.add_theme_constant_override("separation", 8)
-		var caption := _label("Col %d" % (c + 1), 22, CREAM)
+		var caption_text := "2-high" if puzzle.is_double_column(c) else "Col %d" % (c + 1)
+		var caption := _label(caption_text, 22, CREAM)
 		caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		col_box.add_child(caption)
 		var cells: Array = []
@@ -585,6 +708,7 @@ func _build_chrome() -> void:
 	blurb_label = _label("", 22, Color("f6efe2cc"))
 	blurb_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	root_box.add_child(blurb_label)
+	_build_coach(root_box)
 
 	var status_panel := PanelContainer.new()
 	status_panel.add_theme_stylebox_override("panel", _box(CREAM, INK, 0, 14, 12))

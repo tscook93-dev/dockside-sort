@@ -13,6 +13,7 @@ var unlocked_through := 1
 var sound_on := true
 var haptics_on := true
 var best_stars := {}
+var ftue_seen := {}
 
 
 static func stars_for(undos: int, undo_limit: int, temp_slot_used: bool) -> int:
@@ -31,12 +32,21 @@ func is_unlocked(index: int) -> bool:
 	return index < unlocked_through
 
 
+func seen_ftue(level_id: int) -> bool:
+	return bool(ftue_seen.get(str(level_id), false))
+
+
+func mark_ftue(level_id: int) -> void:
+	ftue_seen[str(level_id)] = true
+
+
 func load_file() -> void:
 	var web := _read_web()
 	if web != "":
 		var parsed: Variant = JSON.parse_string(web)
 		if typeof(parsed) == TYPE_DICTIONARY:
 			_apply_dict(parsed)
+			_read_ftue(parsed.get("ftue", {}))
 			return
 	var cfg := ConfigFile.new()
 	if cfg.load(path) != OK:
@@ -50,6 +60,7 @@ func load_file() -> void:
 	if typeof(raw) == TYPE_DICTIONARY:
 		for key in raw:
 			best_stars[str(key)] = int(raw[key])
+	_read_ftue(cfg.get_value("player", "ftue", {}))
 
 
 func save_file() -> void:
@@ -57,6 +68,7 @@ func save_file() -> void:
 	cfg.set_value("player", "coins", coins)
 	cfg.set_value("player", "unlocked_through", unlocked_through)
 	cfg.set_value("player", "stars", best_stars)
+	cfg.set_value("player", "ftue", ftue_seen)
 	cfg.set_value("settings", "sound", sound_on)
 	cfg.set_value("settings", "haptics", haptics_on)
 	cfg.save(path)
@@ -75,6 +87,15 @@ func _apply_dict(data: Dictionary) -> void:
 			best_stars[str(key)] = int(raw[key])
 
 
+func _read_ftue(raw: Variant) -> void:
+	ftue_seen = {}
+	if typeof(raw) != TYPE_DICTIONARY:
+		return
+	for key in raw:
+		if bool(raw[key]):
+			ftue_seen[str(key)] = true
+
+
 func _snapshot() -> String:
 	return JSON.stringify({
 		"coins": coins,
@@ -82,6 +103,7 @@ func _snapshot() -> String:
 		"sound_on": sound_on,
 		"haptics_on": haptics_on,
 		"best_stars": best_stars,
+		"ftue": ftue_seen,
 	})
 
 

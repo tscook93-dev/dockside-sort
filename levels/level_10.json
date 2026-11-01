@@ -1,0 +1,31 @@
+{
+  "id": 10,
+  "title": "Hard Lock",
+  "blurb": "A clean clear is the 3-star line. Still solvable with no undo.",
+  "undo_limit": 0,
+  "capacity": 3,
+  "berths": [
+    "",
+    ""
+  ],
+  "columns": [
+    [
+      "coral",
+      "key",
+      "teal"
+    ],
+    [
+      "teal",
+      "locked:coral",
+      "gold"
+    ],
+    [
+      "gold",
+      "coral",
+      "gold"
+    ],
+    [
+      "teal"
+    ]
+  ]
+}

@@ -1,0 +1,34 @@
+{
+  "id": 15,
+  "title": "Tall Load",
+  "blurb": "More tall piles, still one hold.",
+  "undo_limit": 1,
+  "capacity": 3,
+  "berths": [
+    "",
+    ""
+  ],
+  "double_high": [
+    0,
+    1
+  ],
+  "columns": [
+    [
+      "coral",
+      "gold"
+    ],
+    [
+      "teal",
+      "coral"
+    ],
+    [
+      "gold",
+      "teal",
+      "gold"
+    ],
+    [
+      "teal",
+      "coral"
+    ]
+  ]
+}
