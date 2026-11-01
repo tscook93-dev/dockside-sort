@@ -1,0 +1,12 @@
+{
+  "id": 1,
+  "title": "Morning Shift",
+  "blurb": "Tap the top container, then its matching stack. A full stack ships.",
+  "capacity": 3,
+  "berths": ["coral", "teal", "gold"],
+  "columns": [
+    ["coral", "coral", "coral"],
+    ["teal", "teal", "teal"],
+    ["gold", "gold", "gold"]
+  ]
+}

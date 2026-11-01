@@ -1,0 +1,12 @@
+{
+  "id": 2,
+  "title": "Tight Berth",
+  "blurb": "Only two stacks. Same colour only — park a blocker in the hold.",
+  "capacity": 3,
+  "berths": ["", ""],
+  "columns": [
+    ["coral", "gold", "coral"],
+    ["gold", "teal", "gold"],
+    ["teal", "coral", "teal"]
+  ]
+}

@@ -1,0 +1,103 @@
+name: Playtest builds
+
+on:
+  push:
+    branches-ignore:
+      - gh-pages
+  workflow_dispatch:
+
+concurrency:
+  group: playtest-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  playtest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            unzip wget \
+            libfontconfig1 libx11-6 libxcursor1 libxinerama1 libxrandr2 libxi6 libgl1 libxext6
+          sudo apt-get install -y --no-install-recommends openjdk-17-jdk-headless \
+            || sudo apt-get install -y --no-install-recommends openjdk-21-jdk-headless
+
+      - name: Install pinned Godot
+        run: |
+          set -euo pipefail
+          source ci/versions.env
+          mkdir -p "$HOME/bin" "$HOME/.local/share/godot/export_templates/${GODOT_TEMPLATE_VERSION}"
+          curl -fL --retry 3 -o /tmp/godot.zip "$GODOT_LINUX_URL"
+          echo "${GODOT_LINUX_SHA256}  /tmp/godot.zip" | sha256sum -c -
+          unzip -q -o /tmp/godot.zip -d /tmp/godot-bin
+          install -m 755 "/tmp/godot-bin/Godot_v${GODOT_VERSION}-stable_linux.x86_64" "$HOME/bin/godot"
+          curl -fL --retry 3 -o /tmp/templates.tpz "$GODOT_TEMPLATES_URL"
+          echo "${GODOT_TEMPLATES_SHA256}  /tmp/templates.tpz" | sha256sum -c -
+          unzip -q -o /tmp/templates.tpz -d /tmp/templates
+          cp -a /tmp/templates/templates/. "$HOME/.local/share/godot/export_templates/${GODOT_TEMPLATE_VERSION}/"
+          echo "$HOME/bin" >> "$GITHUB_PATH"
+
+      - name: Import and rules check
+        run: |
+          godot --headless --path . --audio-driver Dummy --import --quit
+          godot --headless --path . --audio-driver Dummy -s res://tests/rules_check.gd
+
+      - name: Export web (single-threaded)
+        run: |
+          mkdir -p build/web
+          godot --headless --path . --audio-driver Dummy --export-release "Web" "$PWD/build/web/index.html"
+          grep -q "const GODOT_THREADS_ENABLED = false;" build/web/index.html
+          test ! -f build/web/index.worker.js
+
+      - name: Install Android SDK
+        run: |
+          set -euo pipefail
+          source ci/versions.env
+          mkdir -p "$HOME/android-sdk/cmdline-tools"
+          curl -fL --retry 3 -o /tmp/cmdtools.zip "$ANDROID_CMDLINE_URL"
+          echo "${ANDROID_CMDLINE_SHA256}  /tmp/cmdtools.zip" | sha256sum -c -
+          unzip -q /tmp/cmdtools.zip -d /tmp/cmdtools
+          rm -rf "$HOME/android-sdk/cmdline-tools/latest"
+          mv /tmp/cmdtools/cmdline-tools "$HOME/android-sdk/cmdline-tools/latest"
+          set +o pipefail
+          yes | "$HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$HOME/android-sdk" --licenses >/dev/null || true
+          set -o pipefail
+          "$HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$HOME/android-sdk" \
+            "$ANDROID_PLATFORM" "$ANDROID_BUILD_TOOLS" "platform-tools"
+
+      - name: Export Android debug APK
+        run: |
+          set -euo pipefail
+          if [ -d /usr/lib/jvm/java-17-openjdk-amd64 ]; then
+            export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+          else
+            export JAVA_HOME="$(dirname "$(dirname "$(readlink -f "$(command -v java)")")")"
+          fi
+          export PATH="$JAVA_HOME/bin:$PATH"
+          export ANDROID_SDK_ROOT="$HOME/android-sdk"
+          bash ci/configure_android.sh
+          mkdir -p build/android
+          godot --headless --path . --audio-driver Dummy --export-debug "Android" "$PWD/build/android/dockside-sort-debug.apk"
+          test -s build/android/dockside-sort-debug.apk
+
+      - name: Upload playtest artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: playtest-${{ github.sha }}
+          if-no-files-found: error
+          path: |
+            build/web/**
+            build/android/dockside-sort-debug.apk
+
+      - name: Publish web preview and APK
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+        run: bash ci/publish_playtest.sh
