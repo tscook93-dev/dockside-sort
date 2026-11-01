@@ -32,12 +32,25 @@ else
 fi
 
 WORK="$(mktemp -d)"
-cleanup() { rm -rf "$WORK"; }
+ASKPASS="$(mktemp)"
+cleanup() { rm -rf "$WORK" "$ASKPASS"; }
 trap cleanup EXIT
 
-AUTH_HEADER="AUTHORIZATION: bearer ${GH_TOKEN}"
+# GitHub's HTTPS remote asks for a username. A prompt script supplies the
+# Actions token without putting it in the remote URL or the log.
+cat > "$ASKPASS" << 'EOF'
+#!/bin/sh
+case "$1" in
+	*Username*) printf '%s\n' "x-access-token" ;;
+	*) printf '%s\n' "$GH_TOKEN" ;;
+esac
+EOF
+chmod 700 "$ASKPASS"
+export GIT_ASKPASS="$ASKPASS"
+export GIT_TERMINAL_PROMPT=0
+
 if git ls-remote --heads "https://github.com/${GITHUB_REPOSITORY}.git" gh-pages | grep -q gh-pages; then
-	git -c "http.extraheader=${AUTH_HEADER}" clone --branch gh-pages --single-branch --depth 1 \
+	git clone --branch gh-pages --single-branch --depth 1 \
 		"https://github.com/${GITHUB_REPOSITORY}.git" "$WORK"
 else
 	git -C "$WORK" init -b gh-pages
@@ -63,14 +76,14 @@ else
 		-c user.name="github-actions[bot]" \
 		commit -m "Playtest web build ${TAG} (${GITHUB_SHA})"
 	for attempt in 1 2 3 4; do
-		if git -C "$WORK" -c "http.extraheader=${AUTH_HEADER}" push origin gh-pages; then
+		if git -C "$WORK" push origin gh-pages; then
 			break
 		fi
 		if [[ "$attempt" -eq 4 ]]; then
 			echo "Failed to push gh-pages" >&2
 			exit 1
 		fi
-		git -C "$WORK" -c "http.extraheader=${AUTH_HEADER}" pull --rebase origin gh-pages || true
+		git -C "$WORK" pull --rebase origin gh-pages || true
 		sleep $((2 ** attempt))
 	done
 fi
