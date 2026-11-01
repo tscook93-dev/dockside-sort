@@ -103,10 +103,12 @@ func _read_web() -> String:
 
 func record_clear(level_index: int, level_id: int, level_count: int, undos: int, undo_limit: int, temp_slot_used: bool) -> Dictionary:
 	var stars := stars_for(undos, undo_limit, temp_slot_used)
-	var gained := stars * COINS_PER_STAR
-	coins += gained
 	var key := str(level_id)
-	if stars > int(best_stars.get(key, 0)):
+	var previous := int(best_stars.get(key, 0))
+	var new_stars := maxi(0, stars - previous)
+	var gained := new_stars * COINS_PER_STAR
+	coins += gained
+	if stars > previous:
 		best_stars[key] = stars
 	if level_index + 1 == unlocked_through and level_index + 1 < level_count:
 		unlocked_through += 1

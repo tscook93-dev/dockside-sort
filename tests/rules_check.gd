@@ -201,12 +201,14 @@ func _check_scoring_and_save() -> void:
 	_check(int(first["stars"]) == 3 and int(first["coins"]) == 30, "level 1 pays 30")
 	_check(saved.unlocked_through == 2 and saved.best_for(1) == 3, "clear unlocks the next level")
 	var again: Dictionary = saved.record_clear(0, 1, 3, 4, 0, false)
-	_check(int(again["stars"]) == 1 and saved.best_for(1) == 3, "a worse clear keeps the best stars")
-	_check(saved.coins == 40, "a replay still pays its own coins")
+	_check(int(again["stars"]) == 1 and int(again["coins"]) == 0 and saved.best_for(1) == 3, "a worse replay pays 0 and keeps the best stars")
+	var replay: Dictionary = saved.record_clear(0, 1, 3, 0, 0, false)
+	_check(int(replay["stars"]) == 3 and int(replay["coins"]) == 0, "replaying a 3-star clear pays 0")
+	_check(saved.coins == 30, "replays do not add coins")
 	var loaded = ProgressScript.new()
 	loaded.path = path
 	loaded.load_file()
-	_check(loaded.coins == 40 and loaded.unlocked_through == 2 and loaded.best_for(1) == 3, "progress reloads from disk")
+	_check(loaded.coins == 30 and loaded.unlocked_through == 2 and loaded.best_for(1) == 3, "progress reloads from disk")
 	loaded.sound_on = false
 	loaded.haptics_on = false
 	loaded.save_file()
