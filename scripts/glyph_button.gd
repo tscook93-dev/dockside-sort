@@ -1,5 +1,7 @@
 extends Button
 
+const Kit := preload("res://scripts/harbour_kit.gd")
+
 var fill := Color(0, 0, 0, 0)
 var border := Color("1a120f")
 var border_px := 6
@@ -35,26 +37,29 @@ func set_selected(on: bool) -> void:
 	queue_redraw()
 
 func _draw() -> void:
-	var sb := StyleBoxFlat.new()
-	sb.bg_color = fill
-	sb.border_color = Color("fff8e8") if mark_selected else border
-	sb.set_border_width_all(10 if mark_selected else border_px)
-	sb.set_corner_radius_all(radius)
-	sb.draw(get_canvas_item(), Rect2(Vector2.ZERO, size))
+	var whole := Rect2(Vector2.ZERO, size)
+	if glyph == "" and not show_lock:
+		draw_rect(whole, fill)
+		draw_rect(whole.grow(-6), Color(fill.r, fill.g, fill.b, minf(fill.a, 0.35)))
+		if mark_selected:
+			draw_rect(whole, Color("fff8e8"), false, 8.0)
+		return
+	Kit.draw_extruded(self, whole, fill, Color("fff8e8") if mark_selected else border)
+	var face := Kit.front_rect(whole)
 	if glyph != "":
-		paint_glyph(self, Rect2(Vector2.ZERO, size), glyph, Color("1a120f"))
+		paint_glyph(self, face, glyph, Color("1a120f"))
 	if show_lock:
 		var ink := Color("1a120f")
-		var body := minf(size.x, size.y)
-		var cx := size.x * 0.5
-		var cy := size.y * 0.52
+		var body := minf(face.size.x, face.size.y)
+		var cx := face.position.x + face.size.x * 0.5
+		var cy := face.position.y + face.size.y * 0.48
 		draw_arc(Vector2(cx, cy - body * 0.06), body * 0.16, PI, TAU, 16, ink, 7.0, true)
 		draw_rect(Rect2(cx - body * 0.18, cy, body * 0.36, body * 0.28), ink)
 		draw_circle(Vector2(cx, cy + body * 0.12), body * 0.045, fill)
 	if order_mark != "":
 		var font := ThemeDB.fallback_font
-		var mark_size := int(maxf(18.0, minf(size.x, size.y) * 0.2))
-		draw_string(font, Vector2(0, size.y - 8), order_mark, HORIZONTAL_ALIGNMENT_CENTER, size.x, mark_size, Color("1a120f"))
+		var mark_size := int(maxf(16.0, minf(face.size.x, face.size.y) * 0.22))
+		draw_string(font, Vector2(face.position.x, face.end.y - 6.0), order_mark, HORIZONTAL_ALIGNMENT_CENTER, face.size.x, mark_size, Color("1a120f"))
 
 static func paint_glyph(control: Control, rect: Rect2, glyph_name: String, ink: Color) -> void:
 	if glyph_name == "":

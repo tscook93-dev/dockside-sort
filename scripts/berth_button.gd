@@ -1,6 +1,7 @@
 extends Button
 
 const Glyph := preload("res://scripts/glyph_button.gd")
+const Kit := preload("res://scripts/harbour_kit.gd")
 
 var capacity := 3
 var lock_color := ""
@@ -59,7 +60,5 @@ func _draw() -> void:
 		else:
 			var idx := stack.size() - 1 - (i - empties)
 			var color_name := str(stack[idx])
-			slot.bg_color = palette[color_name]
-			slot.border_color = Color("1a120f")
-			slot.draw(get_canvas_item(), rect)
-			Glyph.paint_glyph(self, rect, str(glyphs.get(color_name, "")), Color("1a120f"))
+			Kit.draw_extruded(self, rect, palette[color_name])
+			Glyph.paint_glyph(self, Kit.front_rect(rect), str(glyphs.get(color_name, "")), Color("1a120f"))

@@ -9,7 +9,7 @@ Greybox, portrait, one-thumb colour-sort. No lives, no energy, no ads, and no sh
 - Play-testing uses both:
   - a single-threaded web build (no SharedArrayBuffer, no cross-origin isolation) opened on a phone
   - an arm64 Android debug APK (CI debug keystore, not a store key)
-- Art is greybox. The camera is a fixed orthographic board. Each colour is a hue plus a shape: coral circle, teal square, gold triangle.
+- Art is a chunky 2.5D toy harbour: extruded blocks, bold outlines, one fixed view. Each colour keeps its hue plus a shape: coral circle, teal square, gold triangle, indigo diamond.
 - Portrait layout, controls along the bottom, tap targets at least ~108 px on a 720-wide board (about 54 dp on a 360 dp-wide phone, and they grow on taller screens). A minimum safe margin is always applied, and any inset reported by the display is added on top.
 
 ## Design sources
@@ -61,7 +61,7 @@ Workflow artifacts are also uploaded, as a fallback that does require a GitHub l
 
 Tap the bright top container of a column, then tap a stack or the hold. A stack only takes its own colour. On level 1 the three stacks are pinned (Coral, Teal, Gold). On levels 2 and 3 an empty stack accepts any colour, and it ships when it holds 3 of that colour. Undo and Restart are free.
 
-The game opens on the ship list. All 30 ships are on that list. A locked row stays locked until the ship before it is cleared, and an existing save is kept. Drag the list to move it. Desktop keys: `1` `2` `3` start an unlocked level, `S` opens settings. On a level, `1` `2` `3` select columns, `Q` `W` `E` place on stacks, `H` hold, `U` undo, `R` restart, `L` returns to the list, Space confirms the prompt.
+The game opens on the Sydney port. Play continues the earliest unlocked ship that has no stars. Ships opens the list of all 30. A locked row stays locked until the ship before it is cleared, and an existing save is kept. Drag the list to move it. Port returns to Sydney. Desktop keys: on the port, Enter plays and `L` opens ships; on the list, `1`–`9` start an unlocked level. On a level, `1`–`9` select columns, `Q` `W` `E` `A` place on stacks, `H` is hold 1, `J` is hold 2 when it is open, `U` undo, `R` restart, `L` returns to the port. Days on the port change at 00:00 UTC.
 
 ## Levels
 
@@ -92,9 +92,9 @@ Colours: `coral` circle, `teal` square, `gold` triangle, `indigo` diamond.
 
 - [x] M1 Core sort mechanic (greybox; deck grid, colour stacks, 1 hold slot, undo, win, soft fail + free restart, 2-3 hand-made test levels) — done, pending Tobias's merge of #1
 - [x] M2 Level flow (level progression, 3-star scoring, coin payout, local save, restart, settings shell) — done, pending Tobias's merge of #2
-- [x] M3a First levels, part 1 (levels 1–17, FTUE, locked container + key, 4th colour, double-high; readability fixes on #3) — done, pending Tobias's merge of #3
-- [ ] M3b Levels 18–30 with the mechanics already in the game (no conveyor, glass, or colour gate) — in progress
-- [ ] M4 Art pass (chunky 2.5D, port yard hub chapter 1, daily dock challenge + login streak)
+- [x] M3a First levels, part 1 (levels 1–17, FTUE, locked container + key, 4th colour, double-high; readability fixes) — merged in #3
+- [x] M3b Levels 18–30 with the mechanics already in the game — merged in #4
+- [x] M4 Sydney hub, chunky 2.5D kit, second permanent hold, UTC daily dock, 7-day streak and one freeze token — in this branch for playtest, not merged and not a release build
 - [ ] M5 Monetisation hooks (rewarded, interstitial rules, No Forced Ads, coin packs S/M/L; test/sandbox IDs only)
 - [ ] M6 Analytics (the brief's event list behind one thin wrapper; debug sink first)
 - [ ] M7 Soft-launch build (release signing, compliance checklist, crash tooling, Philippines release candidate)
@@ -134,9 +134,17 @@ What is still an implementation choice, not a Playtester answer:
 
 Tobias approved the next playtest as levels 18–30 using only rules already in the build: colour stacks, the four colours, key and lock, double-high, one hold, capacity 3, and capacity 4 from level 20. Conveyor, fragile glass, and colour gates are deferred until after that playtest. The solver only checks that a level can be cleared with one hold and no undo. It does not judge whether a layout is fun or the right difficulty.
 
+## M4 rules approved 7 Nov 2026
+
+Tobias approved this package for the current branch. It is not a store release. The device clock is UTC. The label on the port says 00:00 UTC. There is no server and no Melbourne offset. A backward clock cannot open a new daily or streak claim. A forward clock is accepted and is not policed. Saves stay in the existing `user://progress.cfg` and web `localStorage` key. Old saves keep their coins, stars, and unlocks.
+
+- **Second hold.** The offer appears after the first clear of level 15, including a save that already has stars on level 15. One purchase costs 300 coins and opens a second permanent hold. It cannot be bought twice. Fewer than 300 coins changes nothing. The cap is two permanent holds. This is not the temporary slot, and using it does not change the star rule. Every level is still solvable with one hold and no assist.
+- **Daily dock.** It opens after level 5 has been cleared. The layout is an existing main level. The UTC day number, `floor(unix UTC seconds / 86400) mod 7`, picks it: 0 level 18, 1 level 19, 2 level 20, 3 level 21, 4 level 22, 5 level 23, 6 level 24. The first clear of that UTC day pays 30 coins. The same day pays 0 after a replay or a reload. It does not change main stars, the first-clear coin payout, or which ship is unlocked. The port shows when today is already done.
+- **Streak.** The first visit to the port on a UTC day credits once: 10, 10, 15, 15, 20, 20, 30. The day after day 7 starts again at day 1. There is no second claim button. A miss of one UTC day with no freeze token makes the next credit day 1. Coins already owned stay. Day 7 grants one freeze token, and the cap is 1. Coming back after exactly one missed day spends that token and continues the next streak step. Two or more missed days reset the next credit to day 1 and keep the token. Missed days pay nothing.
+
 ## Still not in this build
 
-Ads, a second hold, the temporary slot, conveyor, glass, colour gates, accounts, and a shop. No store listing, production SDK, or device sign-off.
+Ads, the temporary hold, coin packs, conveyor, glass, colour gates, accounts, and a shop. No store listing, production SDK, or device sign-off. A phone clock set forward can collect streak and daily rewards early; that is a known prototype limit.
 
 ## Release gates still open
 
