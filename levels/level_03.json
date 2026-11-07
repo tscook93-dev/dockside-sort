@@ -1,0 +1,12 @@
+{
+  "id": 3,
+  "title": "Cross Load",
+  "blurb": "Same rules, a tighter load. The hold is the extra space.",
+  "capacity": 3,
+  "berths": ["", ""],
+  "columns": [
+    ["teal", "coral", "gold"],
+    ["teal", "gold", "coral"],
+    ["gold", "coral", "teal"]
+  ]
+}
