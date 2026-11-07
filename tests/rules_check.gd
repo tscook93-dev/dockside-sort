@@ -430,18 +430,7 @@ func _check_m5() -> void:
 	_check(bool(entitlement["ok"]) and offers.no_forced_ads and int(entitlement["coins"]) == 0, "No forced ads adds no coins")
 	var restored: Dictionary = offers.restore()
 	_check(bool(restored["no_forced_ads"]) and int(restored["coins"]) == 0, "restore returns the entitlement and no coins")
-	_check(not offers.may_show_interstitial("break", "completed"), "no interstitial without an approved cadence")
-	offers.cadence_enabled = true
-	_check(not offers.may_show_interstitial("break", "completed"), "No forced ads suppresses the interstitial")
-	offers.no_forced_ads = false
-	_check(not offers.may_show_interstitial("puzzle", "completed"), "no interstitial mid-puzzle")
-	_check(not offers.may_show_interstitial("open", "completed"), "no interstitial on open")
-	_check(not offers.may_show_interstitial("exit", "failed"), "no interstitial on exit")
-	_check(offers.may_show_interstitial("break", "completed"), "a natural break can show when cadence is enabled in a test")
-	offers.note_break(true)
-	_check(not offers.may_show_interstitial("break", "failed"), "interstitials are not back to back")
-	offers.note_break(false)
-	_check(offers.may_show_interstitial("break", "failed"), "a later break can show after one was skipped")
+	_check_m5_rules(offers)
 	var wallet = ProgressScript.new()
 	wallet.path = "user://m5_wallet.cfg"
 	wallet.coins = 20
@@ -458,6 +447,76 @@ func _check_m5() -> void:
 	legacy.load_file()
 	_check(legacy.coins == 80 and legacy.unlocked_through == 4 and legacy.best_for(2) == 3 and not legacy.test_no_forced_ads, "a legacy save ignores the local test ledger")
 	for path in ["user://m5_wallet.cfg", "user://m5_legacy.cfg"]:
+		if FileAccess.file_exists(path):
+			DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+
+
+func _check_m5_rules(_offers) -> void:
+	var board = PuzzleScript.new()
+	board.setup({"id": 4, "capacity": 3, "undo_limit": 1, "berths": [""], "columns": [["coral", "coral", "coral", "coral", "coral"]]})
+	for _i in 4:
+		board.move_column_to_berth(0, 0)
+	_check(board.free_undos_left == 3 and board.history.size() >= 4, "history is kept and the free undo budget starts at 3")
+	for _i in 3:
+		_check(board.undo(), "free undo succeeds")
+		board.free_undos_left -= 1
+	_check(board.free_undos_left == 0, "the fourth undo is no longer free")
+	var payer = ProgressScript.new()
+	payer.path = "user://m5_undo.cfg"
+	payer.coins = 40
+	_check(not payer.try_spend(ProgressScript.UNDO_PRICE) and payer.coins == 40, "40 coins does not buy an undo")
+	payer.coins = 50
+	_check(payer.try_spend(ProgressScript.UNDO_PRICE) and payer.coins == 0, "50 coins pays for one undo")
+	_check(board.undo() and payer.coins == 0, "undo does not refund the 50 coins")
+	board.setup({"id": 4, "capacity": 3, "undo_limit": 1, "berths": [""], "columns": [["coral"]]})
+	_check(board.free_undos_left == 3 and board.history.is_empty(), "restart resets the free undo budget")
+	var slot = ProgressScript.new()
+	slot.path = "user://m5_temp.cfg"
+	slot.coins = 100
+	var opened: Dictionary = slot.buy_temp(8, false)
+	_check(bool(opened["ok"]) and slot.coins == 0 and slot.temp_active(8, false), "100 coins opens one extra hold")
+	var repeat: Dictionary = slot.buy_temp(8, false)
+	_check(not bool(repeat["ok"]) and slot.coins == 0, "an active extra hold is not bought again")
+	slot.clear_temp_for_other(8, false)
+	_check(slot.temp_active(8, false), "the extra hold stays on the same unfinished level")
+	slot.clear_temp_for_other(9, false)
+	_check(not slot.temp_active(8, false), "a different level clears the extra hold")
+	var kept: Dictionary = slot.grant_temp(8, false)
+	_check(bool(kept["ok"]), "a simulated reward can grant the extra hold")
+	slot.save_file()
+	var loaded = ProgressScript.new()
+	loaded.path = slot.path
+	loaded.load_file()
+	_check(loaded.temp_active(8, false) and loaded.coins == 0, "the extra hold reloads on the same level")
+	loaded.finish_temp()
+	_check(loaded.temp_level_id < 0, "finishing the level clears the extra hold")
+	_check(ProgressScript.stars_for(0, 3, true) == 2, "the extra hold still caps stars at 2")
+	var ads = ProgressScript.new()
+	ads.path = "user://m5_ads.cfg"
+	ads.test_now_ms = 0
+	ads.record_clear(9, 10, 30, 0, 0, false)
+	_check(not ads.on_main_clear(10) and ads.interstitial_armed and ads.interstitial_count == 0, "the first level 10 clear shows no interstitial and starts the counter at 0")
+	_check(not ads.on_main_clear(11), "the first later clear is not an interstitial")
+	_check(not ads.on_main_clear(12), "the second later clear is not an interstitial")
+	_check(ads.on_main_clear(13) and ads.interstitial_count == 0, "the third later clear is the interstitial and the counter resets")
+	ads.stamp_ad()
+	ads.test_now_ms = 1000
+	_check(not ads.on_main_clear(14), "a clear inside the cooldown is not an interstitial")
+	_check(not ads.on_main_clear(15), "the next clear is still not due")
+	_check(not ads.on_main_clear(16) and ads.interstitial_count == 0, "a due clear inside the cooldown is skipped and not queued")
+	ads.test_now_ms = 1000 + ProgressScript.AD_GAP_MS
+	_check(not ads.on_main_clear(17), "the first clear after the cooldown is not yet due")
+	_check(not ads.on_main_clear(18), "the second clear after the cooldown is not yet due")
+	_check(ads.on_main_clear(19), "a later third clear can show after 90 seconds")
+	ads.test_no_forced_ads = true
+	_check(not ads.on_main_clear(20), "No forced ads suppresses a clear that is not due")
+	_check(not ads.on_main_clear(21), "No forced ads suppresses the next clear")
+	_check(not ads.on_main_clear(22), "No forced ads suppresses the interstitial and still resets the counter")
+	var early = ProgressScript.new()
+	early.path = "user://m5_early.cfg"
+	_check(not early.on_main_clear(4) and not early.interstitial_armed, "clears before level 10 do not count")
+	_check(int(ProgressScript.PACKS["S"]["coins"]) == 500 and int(ProgressScript.PACKS["M"]["coins"]) == 1500 and int(ProgressScript.PACKS["L"]["coins"]) == 3500, "simulated packs are 500, 1500, and 3500 coins")
+	for path in ["user://m5_undo.cfg", "user://m5_temp.cfg", "user://m5_ads.cfg", "user://m5_early.cfg"]:
 		if FileAccess.file_exists(path):
 			DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
 

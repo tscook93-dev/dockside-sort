@@ -31,6 +31,24 @@ var daily_cleared_day := -1
 ## Local test ledger only. Not a store receipt and not a production entitlement.
 var test_no_forced_ads := false
 var test_transactions := {}
+var temp_level_id := -1
+var temp_is_daily := false
+var interstitial_armed := false
+var interstitial_count := 0
+var last_ad_ms := -1
+## Tests inject a millisecond clock. -1 uses the device clock. Never written to the save.
+var test_now_ms := -1
+const UNDO_PRICE := 50
+const TEMP_PRICE := 100
+const FREE_UNDOS := 3
+const AD_GAP_MS := 90000
+const PACKS := {
+	"S": {"coins": 500, "usd": "1.99", "aud": "2.99"},
+	"M": {"coins": 1500, "usd": "4.99", "aud": "7.99"},
+	"L": {"coins": 3500, "usd": "9.99", "aud": "14.99"},
+}
+const NO_ADS_USD := "9.99"
+const NO_ADS_AUD := "14.99"
 ## Tests inject a UTC day number. -1 uses the device clock. Never written to the save.
 var test_utc_day := -1
 
@@ -82,6 +100,7 @@ func load_file() -> void:
 	_read_ftue(cfg.get_value("player", "ftue", {}))
 	_read_meta_cfg(cfg)
 	_sync_upgrade_flag()
+	_sync_interstitial()
 
 
 func save_file() -> void:
@@ -99,6 +118,11 @@ func save_file() -> void:
 	cfg.set_value("player", "daily_cleared_day", daily_cleared_day)
 	cfg.set_value("test_monetisation", "no_forced_ads", test_no_forced_ads)
 	cfg.set_value("test_monetisation", "transactions", test_transactions)
+	cfg.set_value("test_monetisation", "temp_level_id", temp_level_id)
+	cfg.set_value("test_monetisation", "temp_is_daily", temp_is_daily)
+	cfg.set_value("test_monetisation", "interstitial_armed", interstitial_armed)
+	cfg.set_value("test_monetisation", "interstitial_count", interstitial_count)
+	cfg.set_value("test_monetisation", "last_ad_ms", last_ad_ms)
 	cfg.set_value("settings", "sound", sound_on)
 	cfg.set_value("settings", "haptics", haptics_on)
 	cfg.save(path)
@@ -134,6 +158,11 @@ func _read_meta_cfg(cfg: ConfigFile) -> void:
 	streak_last_day = int(cfg.get_value("player", "streak_last_day", -1))
 	freeze_tokens = clampi(int(cfg.get_value("player", "freeze_tokens", 0)), 0, 1)
 	daily_cleared_day = int(cfg.get_value("player", "daily_cleared_day", -1))
+	temp_level_id = int(cfg.get_value("test_monetisation", "temp_level_id", -1))
+	temp_is_daily = bool(cfg.get_value("test_monetisation", "temp_is_daily", false))
+	interstitial_armed = bool(cfg.get_value("test_monetisation", "interstitial_armed", false))
+	interstitial_count = int(cfg.get_value("test_monetisation", "interstitial_count", 0))
+	last_ad_ms = int(cfg.get_value("test_monetisation", "last_ad_ms", -1))
 	test_no_forced_ads = bool(cfg.get_value("test_monetisation", "no_forced_ads", false))
 	test_transactions = {}
 	var txs: Variant = cfg.get_value("test_monetisation", "transactions", {})
@@ -204,6 +233,11 @@ func _snapshot() -> String:
 		"test_monetisation": {
 			"no_forced_ads": test_no_forced_ads,
 			"transactions": test_transactions,
+			"temp_level_id": temp_level_id,
+			"temp_is_daily": temp_is_daily,
+			"interstitial_armed": interstitial_armed,
+			"interstitial_count": interstitial_count,
+			"last_ad_ms": last_ad_ms,
 		},
 	})
 
@@ -259,15 +293,104 @@ func try_spend(amount: int) -> bool:
 func _read_test_ledger(raw: Variant) -> void:
 	test_no_forced_ads = false
 	test_transactions = {}
+	temp_level_id = -1
+	temp_is_daily = false
+	interstitial_armed = false
+	interstitial_count = 0
+	last_ad_ms = -1
 	if typeof(raw) != TYPE_DICTIONARY:
+		_sync_interstitial()
 		return
 	test_no_forced_ads = bool(raw.get("no_forced_ads", false))
+	temp_level_id = int(raw.get("temp_level_id", -1))
+	temp_is_daily = bool(raw.get("temp_is_daily", false))
+	interstitial_armed = bool(raw.get("interstitial_armed", false))
+	interstitial_count = int(raw.get("interstitial_count", 0))
+	last_ad_ms = int(raw.get("last_ad_ms", -1))
 	var txs: Variant = raw.get("transactions", {})
-	if typeof(txs) != TYPE_DICTIONARY:
+	if typeof(txs) == TYPE_DICTIONARY:
+		for key in txs:
+			if bool(txs[key]):
+				test_transactions[str(key)] = true
+	_sync_interstitial()
+
+
+func _sync_interstitial() -> void:
+	if best_for(10) > 0:
+		interstitial_armed = true
+
+
+func now_ms() -> int:
+	if test_now_ms >= 0:
+		return test_now_ms
+	return int(Time.get_unix_time_from_system() * 1000.0)
+
+
+func stamp_ad() -> void:
+	last_ad_ms = now_ms()
+	save_file()
+
+
+func temp_active(level_id: int, is_daily: bool) -> bool:
+	return temp_level_id == level_id and temp_is_daily == is_daily
+
+
+func clear_temp_for_other(level_id: int, is_daily: bool) -> void:
+	if temp_level_id < 0:
 		return
-	for key in txs:
-		if bool(txs[key]):
-			test_transactions[str(key)] = true
+	if temp_active(level_id, is_daily):
+		return
+	temp_level_id = -1
+	temp_is_daily = false
+	save_file()
+
+
+func finish_temp() -> void:
+	if temp_level_id < 0:
+		return
+	temp_level_id = -1
+	temp_is_daily = false
+	save_file()
+
+
+func buy_temp(level_id: int, is_daily: bool) -> Dictionary:
+	if temp_active(level_id, is_daily):
+		return {"ok": false, "reason": "active"}
+	if not try_spend(TEMP_PRICE):
+		return {"ok": false, "reason": "coins"}
+	temp_level_id = level_id
+	temp_is_daily = is_daily
+	save_file()
+	return {"ok": true, "reason": ""}
+
+
+func grant_temp(level_id: int, is_daily: bool) -> Dictionary:
+	if temp_active(level_id, is_daily):
+		return {"ok": false, "reason": "active"}
+	temp_level_id = level_id
+	temp_is_daily = is_daily
+	save_file()
+	return {"ok": true, "reason": ""}
+
+
+## Returns whether a simulated interstitial should show before the results.
+func on_main_clear(level_id: int) -> bool:
+	if not interstitial_armed:
+		if level_id == 10 and best_for(10) > 0:
+			interstitial_armed = true
+			interstitial_count = 0
+			save_file()
+		return false
+	interstitial_count += 1
+	var due := interstitial_count >= 3
+	if due:
+		interstitial_count = 0
+	var show := false
+	if due and not test_no_forced_ads:
+		if last_ad_ms < 0 or now_ms() - last_ad_ms >= AD_GAP_MS:
+			show = true
+	save_file()
+	return show
 
 
 func buy_second_hold() -> Dictionary:
