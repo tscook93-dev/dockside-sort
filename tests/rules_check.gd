@@ -2,6 +2,7 @@ extends SceneTree
 
 const PuzzleScript := preload("res://scripts/puzzle.gd")
 const ProgressScript := preload("res://scripts/progress.gd")
+const OffersScript := preload("res://scripts/offers.gd")
 
 var failures := 0
 
@@ -39,6 +40,7 @@ func _run() -> void:
 	_check_illegal_does_not_record(levels[0])
 	_check_scoring_and_save()
 	_check_m4(levels[0], levels[2])
+	_check_m5()
 
 	var open1 := _search(levels[0], true)
 	_check(int(open1["solution"]) == 9, "level 1 solution length %s" % str(open1["solution"]))
@@ -392,6 +394,70 @@ func _check_m4(level1: Dictionary, level3: Dictionary) -> void:
 		wide_hold.apply_move(move)
 	_check(not wide_hold.is_soft_fail(), "an empty second permanent hold is still a legal move")
 	for path in ["user://m4_daily.cfg", "user://m4_hold.cfg", "user://m4_legacy.cfg", "user://m4_streak.cfg"]:
+		if FileAccess.file_exists(path):
+			DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+
+
+func _check_m5() -> void:
+	var offers = OffersScript.new()
+	var started: Dictionary = offers.begin_rewarded("demo", 4)
+	_check(bool(started["ok"]), "a local test reward can start")
+	var busy: Dictionary = offers.begin_rewarded("demo", 4)
+	_check(not bool(busy["ok"]) and str(busy["reason"]) == "busy", "a busy provider does not start a second reward")
+	var cancelled: Dictionary = offers.resolve_rewarded(int(started["id"]), "cancelled", 4)
+	_check(not bool(cancelled["granted"]), "cancel grants nothing")
+	var again: Dictionary = offers.resolve_rewarded(int(started["id"]), "completed", 4)
+	_check(not bool(again["granted"]) and str(again["reason"]) == "duplicate", "a second callback grants nothing")
+	var failed_start: Dictionary = offers.begin_rewarded("demo", 4)
+	var failed: Dictionary = offers.resolve_rewarded(int(failed_start["id"]), "failed", 4)
+	_check(not bool(failed["granted"]), "failure grants nothing")
+	var unavailable_start: Dictionary = offers.begin_rewarded("demo", 4)
+	var unavailable: Dictionary = offers.resolve_rewarded(int(unavailable_start["id"]), "unavailable", 4)
+	_check(not bool(unavailable["granted"]), "unavailable grants nothing")
+	var ok_start: Dictionary = offers.begin_rewarded("double_coins", 7)
+	var stale: Dictionary = offers.resolve_rewarded(int(ok_start["id"]), "completed", 8)
+	_check(not bool(stale["granted"]) and str(stale["reason"]) == "stale", "an old level callback does not grant")
+	var once_start: Dictionary = offers.begin_rewarded("double_coins", 9)
+	var once: Dictionary = offers.resolve_rewarded(int(once_start["id"]), "completed", 9)
+	_check(bool(once["granted"]), "one completed callback grants once")
+	var held: Dictionary = offers.purchase("pack-1", "cancelled", true, 50)
+	_check(not bool(held["ok"]) and int(held["coins"]) == 0, "a cancelled purchase grants nothing")
+	var pack: Dictionary = offers.purchase("pack-1", "completed", true, 50)
+	_check(bool(pack["ok"]) and int(pack["coins"]) == 50, "a completed test purchase reports its coins once")
+	var pack_again: Dictionary = offers.purchase("pack-1", "completed", true, 50)
+	_check(not bool(pack_again["ok"]) and int(pack_again["coins"]) == 0, "the same transaction does not pay twice")
+	var entitlement: Dictionary = offers.purchase("ads-1", "completed", false, 100)
+	_check(bool(entitlement["ok"]) and offers.no_forced_ads and int(entitlement["coins"]) == 0, "No forced ads adds no coins")
+	var restored: Dictionary = offers.restore()
+	_check(bool(restored["no_forced_ads"]) and int(restored["coins"]) == 0, "restore returns the entitlement and no coins")
+	_check(not offers.may_show_interstitial("break", "completed"), "no interstitial without an approved cadence")
+	offers.cadence_enabled = true
+	_check(not offers.may_show_interstitial("break", "completed"), "No forced ads suppresses the interstitial")
+	offers.no_forced_ads = false
+	_check(not offers.may_show_interstitial("puzzle", "completed"), "no interstitial mid-puzzle")
+	_check(not offers.may_show_interstitial("open", "completed"), "no interstitial on open")
+	_check(not offers.may_show_interstitial("exit", "failed"), "no interstitial on exit")
+	_check(offers.may_show_interstitial("break", "completed"), "a natural break can show when cadence is enabled in a test")
+	offers.note_break(true)
+	_check(not offers.may_show_interstitial("break", "failed"), "interstitials are not back to back")
+	offers.note_break(false)
+	_check(offers.may_show_interstitial("break", "failed"), "a later break can show after one was skipped")
+	var wallet = ProgressScript.new()
+	wallet.path = "user://m5_wallet.cfg"
+	wallet.coins = 20
+	_check(not wallet.try_spend(-5) and wallet.coins == 20, "a negative spend does not change coins")
+	_check(not wallet.try_spend(21) and wallet.coins == 20, "an unaffordable spend does not change coins")
+	_check(wallet.try_spend(5) and wallet.coins == 15, "an affordable spend debits once")
+	var legacy = ProgressScript.new()
+	legacy.path = "user://m5_legacy.cfg"
+	var old := ConfigFile.new()
+	old.set_value("player", "coins", 80)
+	old.set_value("player", "unlocked_through", 4)
+	old.set_value("player", "stars", {"2": 3})
+	old.save(legacy.path)
+	legacy.load_file()
+	_check(legacy.coins == 80 and legacy.unlocked_through == 4 and legacy.best_for(2) == 3 and not legacy.test_no_forced_ads, "a legacy save ignores the local test ledger")
+	for path in ["user://m5_wallet.cfg", "user://m5_legacy.cfg"]:
 		if FileAccess.file_exists(path):
 			DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
 

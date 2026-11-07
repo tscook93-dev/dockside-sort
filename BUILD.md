@@ -94,8 +94,8 @@ Colours: `coral` circle, `teal` square, `gold` triangle, `indigo` diamond.
 - [x] M2 Level flow (level progression, 3-star scoring, coin payout, local save, restart, settings shell) — done, pending Tobias's merge of #2
 - [x] M3a First levels, part 1 (levels 1–17, FTUE, locked container + key, 4th colour, double-high; readability fixes) — merged in #3
 - [x] M3b Levels 18–30 with the mechanics already in the game — merged in #4
-- [x] M4 Sydney hub, chunky 2.5D kit, second permanent hold, UTC daily dock, 7-day streak and one freeze token — in this branch for playtest, not merged and not a release build
-- [ ] M5 Monetisation hooks (rewarded, interstitial rules, No Forced Ads, coin packs S/M/L; test/sandbox IDs only)
+- [x] M4 Sydney hub, chunky 2.5D kit, second permanent hold, UTC daily dock, 7-day streak and one freeze token — merged in #5
+- [ ] M5 Local test monetisation hooks (no store SDK). Coin prices, pack amounts, the free undo budget, and interstitial cadence are not approved, so those actions stay off
 - [ ] M6 Analytics (the brief's event list behind one thin wrapper; debug sink first)
 - [ ] M7 Soft-launch build (release signing, compliance checklist, crash tooling, Philippines release candidate)
 
@@ -142,9 +142,15 @@ Tobias approved this package for the current branch. It is not a store release. 
 - **Daily dock.** It opens after level 5 has been cleared. The layout is an existing main level. The UTC day number, `floor(unix UTC seconds / 86400) mod 7`, picks it: 0 level 18, 1 level 19, 2 level 20, 3 level 21, 4 level 22, 5 level 23, 6 level 24. The first clear of that UTC day pays 30 coins. The same day pays 0 after a replay or a reload. It does not change main stars, the first-clear coin payout, or which ship is unlocked. The port shows when today is already done.
 - **Streak.** The first visit to the port on a UTC day credits once: 10, 10, 15, 15, 20, 20, 30. The day after day 7 starts again at day 1. There is no second claim button. A miss of one UTC day with no freeze token makes the next credit day 1. Coins already owned stay. Day 7 grants one freeze token, and the cap is 1. Coming back after exactly one missed day spends that token and continues the next streak step. Two or more missed days reset the next credit to day 1 and keep the token. Missed days pay nothing.
 
+## M5 local test hooks
+
+There is no ad SDK and no store SDK in this build. Settings says "Local test. Not a store." A completed local reward callback grants once. Cancel, failure, unavailable, a repeated callback, and a callback from an older level grant nothing. A busy provider ignores a second request. Restore reads the local test entitlement and does not add coins. The same test transaction cannot pay twice. Spending never drives the coin balance below zero, and a negative amount does not change it.
+
+No Forced Ads, when marked in that local test, would suppress a forced interstitial. Rewarded tests stay available. The game does not show an interstitial, because the cadence is not approved. It also does not show one mid-puzzle, on open, on exit, or twice in a row. Undo and Restart stay free. Rewarded undo, the temporary hold, and coin prices for those offers are not approved, so their buttons do not run. Coin pack S/M/L amounts are not approved, so those buttons do not run. A main-path clear can be doubled once from the win prompt. A daily clear is not doubled.
+
 ## Still not in this build
 
-Ads, the temporary hold, coin packs, conveyor, glass, colour gates, accounts, and a shop. No store listing, production SDK, or device sign-off. A phone clock set forward can collect streak and daily rewards early; that is a known prototype limit.
+A real ad network, a real store, production product IDs, the temporary hold's price and cap, conveyor, glass, colour gates, accounts, and analytics. No store listing or device sign-off. A phone clock set forward can collect streak and daily rewards early; that is a known prototype limit.
 
 ## Release gates still open
 

@@ -28,6 +28,9 @@ var streak_next := 1
 var streak_last_day := -1
 var freeze_tokens := 0
 var daily_cleared_day := -1
+## Local test ledger only. Not a store receipt and not a production entitlement.
+var test_no_forced_ads := false
+var test_transactions := {}
 ## Tests inject a UTC day number. -1 uses the device clock. Never written to the save.
 var test_utc_day := -1
 
@@ -94,6 +97,8 @@ func save_file() -> void:
 	cfg.set_value("player", "streak_last_day", streak_last_day)
 	cfg.set_value("player", "freeze_tokens", freeze_tokens)
 	cfg.set_value("player", "daily_cleared_day", daily_cleared_day)
+	cfg.set_value("test_monetisation", "no_forced_ads", test_no_forced_ads)
+	cfg.set_value("test_monetisation", "transactions", test_transactions)
 	cfg.set_value("settings", "sound", sound_on)
 	cfg.set_value("settings", "haptics", haptics_on)
 	cfg.save(path)
@@ -117,6 +122,7 @@ func _apply_dict(data: Dictionary) -> void:
 	streak_last_day = int(data.get("streak_last_day", -1))
 	freeze_tokens = clampi(int(data.get("freeze_tokens", 0)), 0, 1)
 	daily_cleared_day = int(data.get("daily_cleared_day", -1))
+	_read_test_ledger(data.get("test_monetisation", {}))
 	_sync_upgrade_flag()
 
 
@@ -128,6 +134,13 @@ func _read_meta_cfg(cfg: ConfigFile) -> void:
 	streak_last_day = int(cfg.get_value("player", "streak_last_day", -1))
 	freeze_tokens = clampi(int(cfg.get_value("player", "freeze_tokens", 0)), 0, 1)
 	daily_cleared_day = int(cfg.get_value("player", "daily_cleared_day", -1))
+	test_no_forced_ads = bool(cfg.get_value("test_monetisation", "no_forced_ads", false))
+	test_transactions = {}
+	var txs: Variant = cfg.get_value("test_monetisation", "transactions", {})
+	if typeof(txs) == TYPE_DICTIONARY:
+		for key in txs:
+			if bool(txs[key]):
+				test_transactions[str(key)] = true
 
 
 func _sync_upgrade_flag() -> void:
@@ -188,6 +201,10 @@ func _snapshot() -> String:
 		"streak_last_day": streak_last_day,
 		"freeze_tokens": freeze_tokens,
 		"daily_cleared_day": daily_cleared_day,
+		"test_monetisation": {
+			"no_forced_ads": test_no_forced_ads,
+			"transactions": test_transactions,
+		},
 	})
 
 
@@ -229,6 +246,28 @@ func record_clear(level_index: int, level_id: int, level_count: int, undos: int,
 		"undo_limit": undo_limit,
 		"temp_slot_used": temp_slot_used,
 	}
+
+
+func try_spend(amount: int) -> bool:
+	if amount <= 0 or coins < amount:
+		return false
+	coins -= amount
+	save_file()
+	return true
+
+
+func _read_test_ledger(raw: Variant) -> void:
+	test_no_forced_ads = false
+	test_transactions = {}
+	if typeof(raw) != TYPE_DICTIONARY:
+		return
+	test_no_forced_ads = bool(raw.get("no_forced_ads", false))
+	var txs: Variant = raw.get("transactions", {})
+	if typeof(txs) != TYPE_DICTIONARY:
+		return
+	for key in txs:
+		if bool(txs[key]):
+			test_transactions[str(key)] = true
 
 
 func buy_second_hold() -> Dictionary:

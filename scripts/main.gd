@@ -5,6 +5,7 @@ const ProgressScript := preload("res://scripts/progress.gd")
 const Glyph := preload("res://scripts/glyph_button.gd")
 const Berth := preload("res://scripts/berth_button.gd")
 const SydneyView := preload("res://scripts/sydney_view.gd")
+const OffersScript := preload("res://scripts/offers.gd")
 
 const HARBOUR := Color("1b3a4b")
 const CREAM := Color("f6efe2")
@@ -29,6 +30,11 @@ var levels: Array = []
 var level_index := 0
 var puzzle
 var progress = ProgressScript.new()
+var offers = OffersScript.new()
+var level_token := 0
+var _reward_id := -1
+var _doubled := false
+var double_button: Button
 var last_clear := {}
 var deck_height := 0
 var sel_kind := ""
@@ -84,6 +90,7 @@ var haptics_button: Button
 func _ready() -> void:
 	DisplayServer.window_set_title("Dockside Sort: Cargo Puzzle")
 	progress.load_file()
+	_load_offers()
 	_build_chrome()
 	for path in PuzzleScript.list_level_paths():
 		var data: Dictionary = PuzzleScript.load_level(path)
@@ -374,9 +381,13 @@ func _show_modal(mode: String) -> void:
 		var stuck := "The hold is full and nothing can stack."
 		if puzzle.hold == "" or (puzzle.permanent_slots >= 2 and puzzle.hold2 == ""):
 			stuck = "Nothing left can move."
-		modal_body.text = "%s Undo, or restart for free." % stuck
+		modal_body.text = "%s Undo and Restart stay free. Rewarded undo, a temporary hold, and coin prices are not approved yet." % stuck
 		primary_button.text = "Undo"
 		secondary_button.text = "Restart"
+	if double_button != null:
+		var can_double := mode == "win" and not bool(last_clear.get("daily", false)) and int(last_clear.get("coins", 0)) > 0 and not _doubled
+		double_button.visible = can_double
+		double_button.disabled = false
 	secondary_button.visible = true
 	star_row.visible = mode == "win" and not bool(last_clear.get("daily", false))
 	list_button.visible = mode == "win"
@@ -396,6 +407,8 @@ func _start_level(index: int, as_daily := false) -> void:
 		return
 	level_index = index
 	playing_daily = as_daily
+	level_token += 1
+	_doubled = false
 	if hub_root != null:
 		hub_root.visible = false
 	home_root.visible = false
@@ -474,6 +487,83 @@ func _toggle_haptics() -> void:
 	progress.haptics_on = not progress.haptics_on
 	progress.save_file()
 	_refresh_settings()
+
+
+func _load_offers() -> void:
+	offers.no_forced_ads = progress.test_no_forced_ads
+	offers.transactions = progress.test_transactions.duplicate()
+
+
+func _store_offers() -> void:
+	progress.test_no_forced_ads = offers.no_forced_ads
+	progress.test_transactions = offers.transactions.duplicate()
+	progress.save_file()
+
+
+func _mark_no_forced_ads() -> void:
+	if offers.no_forced_ads:
+		settings_note.text = "No forced ads is already on. Local test only. No coins were added."
+		return
+	var txn := "noforced-%d" % (offers.next_id + 1)
+	var result: Dictionary = offers.purchase(txn, "completed", false, 0)
+	if bool(result.get("ok", false)):
+		_store_offers()
+		settings_note.text = "No forced ads is on for this local test. Rewarded tests stay available. Coins stayed %d." % progress.coins
+	else:
+		settings_note.text = "No entitlement was granted (%s)." % str(result.get("reason", ""))
+
+
+func _restore_test_entitlement() -> void:
+	var before: int = progress.coins
+	progress.load_file()
+	_load_offers()
+	var restored: Dictionary = offers.restore()
+	settings_note.text = "Restored the local test entitlement (%s). Coins stayed %d." % ["on" if bool(restored.get("no_forced_ads", false)) else "off", progress.coins]
+	if progress.coins != before or int(restored.get("coins", 0)) != 0:
+		settings_note.text = "Restore tried to change coins."
+
+
+func _start_test_reward() -> void:
+	var begun: Dictionary = offers.begin_rewarded("demo", level_token)
+	if not bool(begun.get("ok", false)):
+		settings_note.text = "The local test provider is busy. No reward was granted."
+		return
+	_reward_id = int(begun.get("id", -1))
+	settings_note.text = "Local test reward is waiting. Choose one result."
+
+
+func _finish_test_reward(outcome: String) -> void:
+	if _reward_id < 0:
+		settings_note.text = "Start a local test reward first."
+		return
+	var before: int = progress.coins
+	var result: Dictionary = offers.resolve_rewarded(_reward_id, outcome, level_token)
+	if progress.coins != before:
+		settings_note.text = "Coins changed unexpectedly."
+		return
+	if bool(result.get("granted", false)):
+		settings_note.text = "Completed once. No coins were added."
+	else:
+		settings_note.text = "No reward: %s." % str(result.get("reason", ""))
+
+
+func _double_clear() -> void:
+	if playing_daily or _doubled or int(last_clear.get("coins", 0)) <= 0:
+		return
+	var begun: Dictionary = offers.begin_rewarded("double_coins", level_token)
+	if not bool(begun.get("ok", false)):
+		return
+	var result: Dictionary = offers.resolve_rewarded(int(begun.get("id", -1)), "completed", level_token)
+	if not bool(result.get("granted", false)) or playing_daily:
+		return
+	var gained: int = int(last_clear.get("coins", 0))
+	progress.coins += gained
+	_doubled = true
+	progress.save_file()
+	if double_button != null:
+		double_button.disabled = true
+		double_button.text = "Doubled once"
+	modal_body.text = "%s\nDoubled once. +%d more coins.\nBalance %d" % [modal_body.text, gained, progress.coins]
 
 
 func _refresh_settings() -> void:
@@ -714,12 +804,23 @@ func _activate_ship_at(global_pos: Vector2) -> void:
 
 
 func _build_settings() -> void:
-	settings_root = VBoxContainer.new()
+	settings_root = Control.new()
 	settings_root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	settings_root.visible = false
-	settings_root.add_theme_constant_override("separation", 12)
 	screens.add_child(settings_root)
-	settings_root.add_child(_label("Settings", 40, CREAM))
+	var scroll := ScrollContainer.new()
+	scroll.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	settings_root.add_child(scroll)
+	var inner := VBoxContainer.new()
+	inner.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	inner.add_theme_constant_override("separation", 12)
+	scroll.add_child(inner)
+	inner.add_child(_label("Settings", 40, CREAM))
+	var top_back := _action_button("Back", GOLD, INK)
+	top_back.custom_minimum_size = Vector2(0, 72)
+	top_back.pressed.connect(_leave_settings)
+	inner.add_child(top_back)
 	sound_button = _action_button("Sound", CREAM, INK)
 	sound_button.custom_minimum_size = Vector2(0, 84)
 	sound_button.alignment = HORIZONTAL_ALIGNMENT_LEFT
@@ -728,21 +829,63 @@ func _build_settings() -> void:
 	haptics_button.custom_minimum_size = Vector2(0, 84)
 	haptics_button.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	haptics_button.pressed.connect(_toggle_haptics)
-	settings_root.add_child(sound_button)
-	settings_root.add_child(haptics_button)
-	for row_name in ["Privacy", "Restore purchases", "Support"]:
+	inner.add_child(sound_button)
+	inner.add_child(haptics_button)
+	for row_name in ["Privacy", "Support"]:
 		var row := _action_button("%s\nNot in this build" % row_name, Color("d7e4ea"), INK)
-		row.custom_minimum_size = Vector2(0, 84)
+		row.custom_minimum_size = Vector2(0, 72)
 		row.alignment = HORIZONTAL_ALIGNMENT_LEFT
 		row.add_theme_font_size_override("font_size", 22)
 		row.pressed.connect(_placeholder_row.bind(row_name))
-		settings_root.add_child(row)
+		inner.add_child(row)
+	inner.add_child(_label("Local test. Not a store.", 22, INK))
+	var ads := _action_button("Mark No forced ads\nLocal test", CREAM, INK)
+	ads.custom_minimum_size = Vector2(0, 72)
+	ads.add_theme_font_size_override("font_size", 22)
+	ads.pressed.connect(_mark_no_forced_ads)
+	inner.add_child(ads)
+	var restore := _action_button("Restore local test entitlement", Color("d7e4ea"), INK)
+	restore.custom_minimum_size = Vector2(0, 72)
+	restore.add_theme_font_size_override("font_size", 22)
+	restore.pressed.connect(_restore_test_entitlement)
+	inner.add_child(restore)
+	var reward := _action_button("Start local test reward", GOLD, INK)
+	reward.custom_minimum_size = Vector2(0, 72)
+	reward.add_theme_font_size_override("font_size", 22)
+	reward.pressed.connect(_start_test_reward)
+	inner.add_child(reward)
+	var outcomes := VBoxContainer.new()
+	outcomes.add_theme_constant_override("separation", 8)
+	var outcome_names := ["completed", "cancelled", "failed", "unavailable"]
+	for row_i in 2:
+		var outcome_row := HBoxContainer.new()
+		outcome_row.add_theme_constant_override("separation", 8)
+		for col_i in 2:
+			var outcome: String = outcome_names[row_i * 2 + col_i]
+			var choice := _action_button(outcome.substr(0, 1).to_upper() + outcome.substr(1), Color("d7e4ea"), INK)
+			choice.custom_minimum_size = Vector2(0, 64)
+			choice.add_theme_font_size_override("font_size", 20)
+			choice.pressed.connect(_finish_test_reward.bind(outcome))
+			outcome_row.add_child(choice)
+		outcomes.add_child(outcome_row)
+	inner.add_child(outcomes)
+	for locked_name in ["Coin pack S", "Coin pack M", "Coin pack L", "Coin undo", "Temporary hold"]:
+		var locked := _action_button("%s\nNot approved yet" % locked_name, Color("d5dee3"), INK)
+		locked.custom_minimum_size = Vector2(0, 64)
+		locked.disabled = true
+		locked.add_theme_font_size_override("font_size", 18)
+		locked.add_theme_color_override("font_disabled_color", INK)
+		inner.add_child(locked)
+	var cadence_note := _label("No interstitial is shown. Its cadence is not approved. Undo and Restart stay free.", 20, INK)
+	cadence_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	inner.add_child(cadence_note)
 	settings_note = _label("", 22, GOLD)
-	settings_root.add_child(settings_note)
+	settings_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	inner.add_child(settings_note)
 	var back := _action_button("Back", GOLD, INK)
 	back.custom_minimum_size = Vector2(0, 84)
 	back.pressed.connect(_leave_settings)
-	settings_root.add_child(back)
+	inner.add_child(back)
 	_refresh_settings()
 
 
@@ -1096,6 +1239,12 @@ func _build_modal() -> void:
 	row.add_child(primary_button)
 	row.add_child(secondary_button)
 	box.add_child(row)
+	double_button = _action_button("Double this clear\nLocal test", GOLD, INK)
+	double_button.custom_minimum_size = Vector2(460, 72)
+	double_button.add_theme_font_size_override("font_size", 22)
+	double_button.visible = false
+	double_button.pressed.connect(_double_clear)
+	box.add_child(double_button)
 	list_button = _action_button("Port", Color("d7e4ea"), INK)
 	list_button.custom_minimum_size = Vector2(460, 72)
 	list_button.add_theme_font_size_override("font_size", 24)
