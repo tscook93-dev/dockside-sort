@@ -21,6 +21,10 @@ var berths: Array = []
 var hold := ""
 var history: Array = []
 var moves_done := 0
+var undos_used := 0
+var undo_limit := 0
+## Reserved for the temporary hold slot. Nothing in M2 sets this true.
+var temp_slot_used := false
 var last_shipped := ""
 
 static func list_level_paths() -> PackedStringArray:
@@ -60,6 +64,7 @@ func setup(data: Dictionary) -> void:
 	title = str(data.get("title", "Level"))
 	blurb = str(data.get("blurb", ""))
 	capacity = int(data.get("capacity", 3))
+	undo_limit = int(data.get("undo_limit", 0))
 	columns = []
 	for col in data.get("columns", []):
 		var stack: Array = []
@@ -74,6 +79,8 @@ func setup(data: Dictionary) -> void:
 	hold = ""
 	history = []
 	moves_done = 0
+	undos_used = 0
+	temp_slot_used = false
 	last_shipped = ""
 
 func can_accept(color: String, berth: int) -> bool:
@@ -144,6 +151,7 @@ func undo() -> bool:
 		return false
 	var snap: Dictionary = history.pop_back()
 	_restore_snap(snap)
+	undos_used += 1
 	return true
 
 func is_win() -> bool:

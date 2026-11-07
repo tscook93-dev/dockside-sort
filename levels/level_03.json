@@ -2,6 +2,7 @@
   "id": 3,
   "title": "Cross Load",
   "blurb": "Same rules, a tighter load. The hold is the extra space.",
+  "undo_limit": 1,
   "capacity": 3,
   "berths": ["", ""],
   "columns": [

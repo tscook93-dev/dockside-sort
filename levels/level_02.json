@@ -2,6 +2,7 @@
   "id": 2,
   "title": "Tight Berth",
   "blurb": "Only two stacks. Same colour only — park a blocker in the hold.",
+  "undo_limit": 1,
   "capacity": 3,
   "berths": ["", ""],
   "columns": [

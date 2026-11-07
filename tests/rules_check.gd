@@ -1,6 +1,7 @@
 extends SceneTree
 
 const PuzzleScript := preload("res://scripts/puzzle.gd")
+const ProgressScript := preload("res://scripts/progress.gd")
 
 var failures := 0
 
@@ -34,6 +35,7 @@ func _run() -> void:
 	_play_script(levels[2], _level3_fail(), false, true, "level 3 scripted soft fail")
 	_check_undo_depth(levels[1])
 	_check_illegal_does_not_record(levels[0])
+	_check_scoring_and_save()
 
 	var open1 := _search(levels[0], true)
 	_check(int(open1["solution"]) == 9, "level 1 solution length %s" % str(open1["solution"]))
@@ -180,6 +182,42 @@ func _level3_fail() -> Array:
 		{"op": "deck_hold", "col": 0},
 		{"op": "deck_berth", "col": 1, "berth": 1},
 	]
+
+
+func _check_scoring_and_save() -> void:
+	_check(ProgressScript.stars_for(0, 0, false) == 3, "zero undos is 3 stars")
+	_check(ProgressScript.stars_for(0, 0, true) == 2, "temp slot blocks 3 stars")
+	_check(ProgressScript.stars_for(2, 0, false) == 2, "two extra undos is a light assist")
+	_check(ProgressScript.stars_for(3, 0, false) == 1, "three extra undos is 1 star")
+	_check(ProgressScript.stars_for(1, 1, false) == 3, "within the level limit is 3 stars")
+	var path := "user://m2_rules_progress.cfg"
+	if FileAccess.file_exists(path):
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+	var saved = ProgressScript.new()
+	saved.path = path
+	saved.load_file()
+	_check(saved.coins == 0 and saved.unlocked_through == 1, "fresh progress")
+	var first: Dictionary = saved.record_clear(0, 1, 3, 0, 0, false)
+	_check(int(first["stars"]) == 3 and int(first["coins"]) == 30, "level 1 pays 30")
+	_check(saved.unlocked_through == 2 and saved.best_for(1) == 3, "clear unlocks the next level")
+	var again: Dictionary = saved.record_clear(0, 1, 3, 4, 0, false)
+	_check(int(again["stars"]) == 1 and int(again["coins"]) == 0 and saved.best_for(1) == 3, "a worse replay pays 0 and keeps the best stars")
+	var replay: Dictionary = saved.record_clear(0, 1, 3, 0, 0, false)
+	_check(int(replay["stars"]) == 3 and int(replay["coins"]) == 0, "replaying a 3-star clear pays 0")
+	_check(saved.coins == 30, "replays do not add coins")
+	var loaded = ProgressScript.new()
+	loaded.path = path
+	loaded.load_file()
+	_check(loaded.coins == 30 and loaded.unlocked_through == 2 and loaded.best_for(1) == 3, "progress reloads from disk")
+	loaded.sound_on = false
+	loaded.haptics_on = false
+	loaded.save_file()
+	var toggles = ProgressScript.new()
+	toggles.path = path
+	toggles.load_file()
+	_check(not toggles.sound_on and not toggles.haptics_on, "settings reload from disk")
+	if FileAccess.file_exists(path):
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
 
 
 func _check(cond: bool, message: String) -> void:

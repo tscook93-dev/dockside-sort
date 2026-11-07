@@ -1,6 +1,6 @@
 # Dockside Sort: Cargo Puzzle
 
-Milestone 1 is a greybox, portrait, one-thumb colour-sort. No lives, no energy, no ads, no coins.
+Greybox, portrait, one-thumb colour-sort. No lives, no energy, no ads, and no shop. Coins are a balance only.
 
 ## Setup decisions
 
@@ -61,7 +61,7 @@ Workflow artifacts are also uploaded, as a fallback that does require a GitHub l
 
 Tap the bright top container of a column, then tap a stack or the hold. A stack only takes its own colour. On level 1 the three stacks are pinned (Coral, Teal, Gold). On levels 2 and 3 an empty stack accepts any colour, and it ships when it holds 3 of that colour. Undo and Restart are free.
 
-Desktop keys, for a keyboard over the web build: `1` `2` `3` select columns, `Q` `W` `E` place on stacks, `H` hold, `U` undo, `R` restart, Space confirms the prompt.
+The game opens on the ship list. Desktop keys: `1` `2` `3` start an unlocked level, `S` opens settings. On a level, `1` `2` `3` select columns, `Q` `W` `E` place on stacks, `H` hold, `U` undo, `R` restart, `L` returns to the list, Space confirms the prompt.
 
 ## Levels
 
@@ -83,13 +83,14 @@ Drop another `levels/level_XX.json` in and the next export picks it up (`include
 - `columns` run left to right. Each column is top-first: index 0 is the only container that can move.
 - `berths` is one entry per stack. `""` is an open stack. A colour name pins that stack to the colour.
 - `capacity` is how many matching containers ship the stack off the board.
+- `undo_limit` is N for 3 stars. Omit it and N is 0.
 
-Colours in M1: `coral`, `teal`, `gold`.
+Colours: `coral`, `teal`, `gold`.
 
 ## Milestones
 
-- [ ] M1 Core sort mechanic (greybox; deck grid, colour stacks, 1 hold slot, undo, win, soft fail + free restart, 2-3 hand-made test levels) — in progress
-- [ ] M2 Level flow (level progression, 3-star scoring, coin payout, local save, restart, settings shell)
+- [x] M1 Core sort mechanic (greybox; deck grid, colour stacks, 1 hold slot, undo, win, soft fail + free restart, 2-3 hand-made test levels) — done, pending Tobias's merge of #1
+- [ ] M2 Level flow (level progression, 3-star scoring, coin payout, local save, restart, settings shell) — in progress
 - [ ] M3 First levels (levels 1-30 + FTUE with every mechanic in the brief's levels table)
 - [ ] M4 Art pass (chunky 2.5D, port yard hub chapter 1, daily dock challenge + login streak)
 - [ ] M5 Monetisation hooks (rewarded, interstitial rules, No Forced Ads, coin packs S/M/L; test/sandbox IDs only)
@@ -112,8 +113,13 @@ These are the readings used where the brief does not specify the board. They mat
 8. **Undo.** Every successful move is snapshotted, including ships. History keeps 40 snapshots, which is at least the required 10. All undos are free in M1. A rejected tap is not a move and is not recorded.
 9. **Input.** Tap to select, tap to place. No drag in M1.
 10. **Length.** These three levels are short so the loop can be proved in one sitting. The 2–3 minute target is for later authored levels, not these.
+11. **Stars.** 3 stars means the clear used at most `undo_limit` undos and the temporary hold slot was not used. 2 stars is a light assist: undos may run up to `undo_limit + 2`, and using the temporary slot (not built yet; the flag stays false) also stops a clear at 2 stars while it is still inside that undo band. Any other clear is 1 star. The saved star count for a level is the best, not the latest.
+12. **Coins.** A clear pays 10 coins for each star that is new for that level. Replaying a 3-star clear pays 0. Improving a 1-star clear to 3 stars pays 20. There is no shop. The win screen shows the stars, the coins just earned, and the balance.
+13. **Unlocks.** Level 1 starts unlocked. Clearing a level unlocks the next one in list order. Locked rows stay on the list and do not start. Leaving mid-level from the Levels button records nothing.
+14. **Save.** Progress, best stars, the coin balance, and the sound and haptics toggles are written to `user://progress.cfg` (app storage on Android and desktop). On web the same snapshot is also written to `localStorage`, because the browser file sync is asynchronous and a reload can beat it. A reload reads that save back.
+15. **Settings shell.** Sound and haptics are stored toggles. There is no music yet. Haptics calls a short vibration when a stack ships, which does nothing on web. Privacy, restore purchases, and support are rows that only say they are not in this build.
 
-Not in M1, on purpose: stars, coins, ads, a second hold, locked containers, double-high stacks, conveyors, glass, colour gates, saving, accounts.
+Not in this build, on purpose: ads, a second hold, the temporary slot purchase, locked containers, double-high stacks, conveyors, glass, colour gates, accounts, and a shop.
 
 ## Brief versus design doc
 
