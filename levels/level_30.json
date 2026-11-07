@@ -1,0 +1,44 @@
+{
+  "id": 30,
+  "title": "Sydney Mix",
+  "blurb": "Sydney send-off using the rules already in the game: four colours, a key, a lock, and a two-high pile.",
+  "undo_limit": 1,
+  "capacity": 4,
+  "berths": [
+    "",
+    "",
+    ""
+  ],
+  "columns": [
+    [
+      "coral",
+      "locked:gold"
+    ],
+    [
+      "key",
+      "teal",
+      "teal",
+      "teal"
+    ],
+    [
+      "gold",
+      "gold",
+      "gold",
+      "indigo"
+    ],
+    [
+      "indigo",
+      "indigo",
+      "indigo",
+      "coral"
+    ],
+    [
+      "teal",
+      "coral",
+      "coral"
+    ]
+  ],
+  "double_high": [
+    0
+  ]
+}

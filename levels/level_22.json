@@ -1,0 +1,34 @@
+{
+  "id": 22,
+  "title": "Tall Again",
+  "blurb": "One pile is two high. Move its top first.",
+  "undo_limit": 2,
+  "capacity": 3,
+  "berths": [
+    "",
+    "",
+    ""
+  ],
+  "columns": [
+    [
+      "coral",
+      "teal"
+    ],
+    [
+      "coral",
+      "coral",
+      "gold"
+    ],
+    [
+      "teal",
+      "gold",
+      "gold"
+    ],
+    [
+      "teal"
+    ]
+  ],
+  "double_high": [
+    0
+  ]
+}

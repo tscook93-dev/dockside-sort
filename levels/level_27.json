@@ -1,0 +1,34 @@
+{
+  "id": 27,
+  "title": "Twin Piles",
+  "blurb": "Two piles are two high.",
+  "undo_limit": 1,
+  "capacity": 3,
+  "berths": [
+    "",
+    ""
+  ],
+  "columns": [
+    [
+      "coral",
+      "gold"
+    ],
+    [
+      "teal",
+      "coral"
+    ],
+    [
+      "gold",
+      "teal",
+      "gold"
+    ],
+    [
+      "teal",
+      "coral"
+    ]
+  ],
+  "double_high": [
+    0,
+    1
+  ]
+}

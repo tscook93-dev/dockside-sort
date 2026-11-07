@@ -1,0 +1,29 @@
+{
+  "id": 18,
+  "title": "Open Practice",
+  "blurb": "Practice with three colours and open stacks.",
+  "undo_limit": 3,
+  "capacity": 3,
+  "berths": [
+    "",
+    "",
+    ""
+  ],
+  "columns": [
+    [
+      "coral",
+      "coral",
+      "coral"
+    ],
+    [
+      "teal",
+      "gold",
+      "teal"
+    ],
+    [
+      "gold",
+      "gold",
+      "teal"
+    ]
+  ]
+}

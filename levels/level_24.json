@@ -1,0 +1,35 @@
+{
+  "id": 24,
+  "title": "Lock On Top",
+  "blurb": "A locked container is the bottom of a two-high pile.",
+  "undo_limit": 1,
+  "capacity": 3,
+  "berths": [
+    "",
+    "",
+    ""
+  ],
+  "columns": [
+    [
+      "coral",
+      "locked:teal"
+    ],
+    [
+      "key",
+      "teal",
+      "teal"
+    ],
+    [
+      "coral",
+      "coral",
+      "gold"
+    ],
+    [
+      "gold",
+      "gold"
+    ]
+  ],
+  "double_high": [
+    0
+  ]
+}

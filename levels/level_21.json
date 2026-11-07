@@ -1,0 +1,32 @@
+{
+  "id": 21,
+  "title": "Four Deep",
+  "blurb": "Same four-high stacks, colours braided.",
+  "undo_limit": 1,
+  "capacity": 4,
+  "berths": [
+    "",
+    "",
+    ""
+  ],
+  "columns": [
+    [
+      "coral",
+      "teal",
+      "coral",
+      "teal"
+    ],
+    [
+      "teal",
+      "gold",
+      "teal",
+      "gold"
+    ],
+    [
+      "gold",
+      "coral",
+      "gold",
+      "coral"
+    ]
+  ]
+}

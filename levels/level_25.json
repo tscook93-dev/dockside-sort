@@ -1,0 +1,34 @@
+{
+  "id": 25,
+  "title": "Four Colours",
+  "blurb": "Coral, teal, gold, and indigo. Three open stacks.",
+  "undo_limit": 2,
+  "capacity": 3,
+  "berths": [
+    "",
+    "",
+    ""
+  ],
+  "columns": [
+    [
+      "indigo",
+      "coral",
+      "indigo"
+    ],
+    [
+      "teal",
+      "gold",
+      "teal"
+    ],
+    [
+      "coral",
+      "indigo",
+      "gold"
+    ],
+    [
+      "gold",
+      "teal",
+      "coral"
+    ]
+  ]
+}

@@ -115,6 +115,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		elif key == KEY_ESCAPE and modal_mode == "win":
 			_show_home()
 		return
+	if coach != null and coach.visible and key == KEY_S:
+		_finish_coach()
+		return
 	if key == KEY_ESCAPE or key == KEY_L:
 		_show_home()
 		return

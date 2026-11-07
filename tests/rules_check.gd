@@ -18,8 +18,8 @@ func _init() -> void:
 
 func _run() -> void:
 	var paths := PuzzleScript.list_level_paths()
-	_check(paths.size() == 17, "seventeen level files, got %d" % paths.size())
-	if paths.size() != 17:
+	_check(paths.size() == 30, "thirty level files, got %d" % paths.size())
+	if paths.size() != 30:
 		return
 	var levels: Array = []
 	for path in paths:
@@ -27,6 +27,8 @@ func _run() -> void:
 	_check(str(levels[0].get("title", "")) == "Morning Shift", "level 1 title")
 	_check(str(levels[7].get("title", "")) == "The Key", "level 8 title")
 	_check(str(levels[12].get("title", "")) == "Double High", "level 13 title")
+	_check(str(levels[29].get("title", "")) == "Sydney Mix", "level 30 title")
+	_check_progress_to_30()
 
 	_play_script(levels[0], _level1_win(), true, false, "level 1 scripted win")
 	_play_script(levels[2], _level2_win(), true, false, "level 3 scripted win")
@@ -216,6 +218,29 @@ func _check_scoring_and_save() -> void:
 	toggles.path = path
 	toggles.load_file()
 	_check(not toggles.sound_on and not toggles.haptics_on, "settings reload from disk")
+	if FileAccess.file_exists(path):
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+
+
+func _check_progress_to_30() -> void:
+	var path := "user://m3b_progress.cfg"
+	if FileAccess.file_exists(path):
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+	var saved = ProgressScript.new()
+	saved.path = path
+	for i in 30:
+		var result: Dictionary = saved.record_clear(i, i + 1, 30, 0, 0, false)
+		_check(int(result["coins"]) == 30, "first clear of level %d pays 30" % (i + 1))
+	_check(saved.unlocked_through == 30, "clearing through level 30 unlocks 30")
+	var again: Dictionary = saved.record_clear(29, 30, 30, 0, 0, false)
+	_check(int(again["coins"]) == 0, "replaying level 30 at 3 stars pays 0")
+	saved.mark_ftue(1)
+	saved.save_file()
+	var loaded = ProgressScript.new()
+	loaded.path = path
+	loaded.load_file()
+	_check(loaded.unlocked_through == 30 and loaded.best_for(30) == 3, "level 30 progress reloads")
+	_check(loaded.seen_ftue(1), "skipped tutorial is remembered")
 	if FileAccess.file_exists(path):
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
 

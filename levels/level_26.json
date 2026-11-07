@@ -1,0 +1,35 @@
+{
+  "id": 26,
+  "title": "Wide Lock",
+  "blurb": "Four-high stacks, plus a key and a lock.",
+  "undo_limit": 1,
+  "capacity": 4,
+  "berths": [
+    "",
+    "",
+    ""
+  ],
+  "columns": [
+    [
+      "key",
+      "coral",
+      "coral",
+      "teal"
+    ],
+    [
+      "locked:coral",
+      "teal",
+      "teal",
+      "teal"
+    ],
+    [
+      "gold",
+      "gold",
+      "gold",
+      "gold"
+    ],
+    [
+      "coral"
+    ]
+  ]
+}
