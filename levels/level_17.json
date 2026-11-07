@@ -1,0 +1,34 @@
+{
+  "id": 17,
+  "title": "Mixed Hold",
+  "blurb": "Tall pile, a buried key, and open stacks.",
+  "undo_limit": 1,
+  "capacity": 3,
+  "berths": [
+    "",
+    ""
+  ],
+  "double_high": [
+    0
+  ],
+  "columns": [
+    [
+      "coral",
+      "locked:gold"
+    ],
+    [
+      "teal",
+      "key",
+      "teal"
+    ],
+    [
+      "coral",
+      "coral",
+      "gold"
+    ],
+    [
+      "teal",
+      "gold"
+    ]
+  ]
+}

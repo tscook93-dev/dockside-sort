@@ -1,0 +1,35 @@
+{
+  "id": 16,
+  "title": "Lock and Stack",
+  "blurb": "A locked container sits under the top of a tall pile.",
+  "undo_limit": 2,
+  "capacity": 3,
+  "berths": [
+    "",
+    "",
+    ""
+  ],
+  "double_high": [
+    0
+  ],
+  "columns": [
+    [
+      "coral",
+      "locked:teal"
+    ],
+    [
+      "key",
+      "teal",
+      "teal"
+    ],
+    [
+      "coral",
+      "coral",
+      "gold"
+    ],
+    [
+      "gold",
+      "gold"
+    ]
+  ]
+}

@@ -1,0 +1,34 @@
+{
+  "id": 13,
+  "title": "Double High",
+  "blurb": "The tall pile is two containers. Move the top one first.",
+  "undo_limit": 2,
+  "capacity": 3,
+  "berths": [
+    "",
+    "",
+    ""
+  ],
+  "double_high": [
+    0
+  ],
+  "columns": [
+    [
+      "coral",
+      "teal"
+    ],
+    [
+      "coral",
+      "coral",
+      "gold"
+    ],
+    [
+      "teal",
+      "teal",
+      "gold"
+    ],
+    [
+      "gold"
+    ]
+  ]
+}

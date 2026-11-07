@@ -1,0 +1,32 @@
+{
+  "id": 9,
+  "title": "Buried Key",
+  "blurb": "Clear the container above the key, then collect it.",
+  "undo_limit": 1,
+  "capacity": 3,
+  "berths": [
+    "",
+    "",
+    ""
+  ],
+  "columns": [
+    [
+      "coral",
+      "key",
+      "teal"
+    ],
+    [
+      "teal",
+      "locked:coral",
+      "coral"
+    ],
+    [
+      "teal",
+      "gold",
+      "gold"
+    ],
+    [
+      "gold"
+    ]
+  ]
+}

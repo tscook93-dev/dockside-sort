@@ -48,6 +48,7 @@ jobs:
         run: |
           godot --headless --path . --audio-driver Dummy --import --quit
           godot --headless --path . --audio-driver Dummy -s res://tests/rules_check.gd
+          godot --headless --path . --audio-driver Dummy -s res://tests/solve_levels.gd
 
       - name: Export web (single-threaded)
         run: |

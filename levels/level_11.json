@@ -1,0 +1,35 @@
+{
+  "id": 11,
+  "title": "Fourth Colour",
+  "blurb": "Indigo joins the yard. Diamond mark, pinned stack.",
+  "undo_limit": 2,
+  "capacity": 3,
+  "berths": [
+    "coral",
+    "teal",
+    "gold",
+    "indigo"
+  ],
+  "columns": [
+    [
+      "coral",
+      "indigo",
+      "coral"
+    ],
+    [
+      "teal",
+      "gold",
+      "teal"
+    ],
+    [
+      "indigo",
+      "coral",
+      "gold"
+    ],
+    [
+      "gold",
+      "teal",
+      "indigo"
+    ]
+  ]
+}

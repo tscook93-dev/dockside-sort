@@ -1,0 +1,34 @@
+{
+  "id": 12,
+  "title": "Indigo Yard",
+  "blurb": "Four colours, three open stacks.",
+  "undo_limit": 1,
+  "capacity": 3,
+  "berths": [
+    "",
+    "",
+    ""
+  ],
+  "columns": [
+    [
+      "coral",
+      "indigo",
+      "teal"
+    ],
+    [
+      "gold",
+      "coral",
+      "indigo"
+    ],
+    [
+      "teal",
+      "gold",
+      "coral"
+    ],
+    [
+      "indigo",
+      "teal",
+      "gold"
+    ]
+  ]
+}

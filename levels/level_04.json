@@ -1,0 +1,28 @@
+{
+  "id": 4,
+  "title": "Try Undo",
+  "blurb": "Undo puts the last move back. You can still clear without it.",
+  "undo_limit": 3,
+  "capacity": 3,
+  "berths": [
+    "",
+    ""
+  ],
+  "columns": [
+    [
+      "teal",
+      "coral",
+      "gold"
+    ],
+    [
+      "teal",
+      "gold",
+      "coral"
+    ],
+    [
+      "gold",
+      "coral",
+      "teal"
+    ]
+  ]
+}

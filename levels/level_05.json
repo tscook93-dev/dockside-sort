@@ -1,0 +1,28 @@
+{
+  "id": 5,
+  "title": "Easy Yard",
+  "blurb": "Practice. Open stacks, three colours.",
+  "undo_limit": 2,
+  "capacity": 3,
+  "berths": [
+    "",
+    ""
+  ],
+  "columns": [
+    [
+      "coral",
+      "coral",
+      "coral"
+    ],
+    [
+      "teal",
+      "teal",
+      "gold"
+    ],
+    [
+      "gold",
+      "gold",
+      "teal"
+    ]
+  ]
+}

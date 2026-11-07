@@ -23,8 +23,9 @@ var history: Array = []
 var moves_done := 0
 var undos_used := 0
 var undo_limit := 0
-## Reserved for the temporary hold slot. Nothing in M2 sets this true.
+## Reserved for the temporary hold slot. Nothing sets this true until M5.
 var temp_slot_used := false
+var double_high: Array = []
 var last_shipped := ""
 
 static func list_level_paths() -> PackedStringArray:
@@ -65,6 +66,9 @@ func setup(data: Dictionary) -> void:
 	blurb = str(data.get("blurb", ""))
 	capacity = int(data.get("capacity", 3))
 	undo_limit = int(data.get("undo_limit", 0))
+	double_high = []
+	for entry in data.get("double_high", []):
+		double_high.append(int(entry))
 	columns = []
 	for col in data.get("columns", []):
 		var stack: Array = []
@@ -82,6 +86,32 @@ func setup(data: Dictionary) -> void:
 	undos_used = 0
 	temp_slot_used = false
 	last_shipped = ""
+
+static func is_key(token: String) -> bool:
+	return token == "key"
+
+
+static func is_locked(token: String) -> bool:
+	return token.begins_with("locked:")
+
+
+static func cargo_color(token: String) -> String:
+	if token.begins_with("locked:"):
+		return token.substr(7)
+	return token
+
+
+func deck_has_key() -> bool:
+	for col in columns:
+		for token in col:
+			if str(token) == "key":
+				return true
+	return false
+
+
+func is_double_column(col: int) -> bool:
+	return double_high.has(col)
+
 
 func can_accept(color: String, berth: int) -> bool:
 	if berth < 0 or berth >= berths.size():
@@ -108,9 +138,11 @@ func reject_reason(color: String, berth: int) -> String:
 	return "Stack %d is %s. %s cannot go on it." % [berth + 1, pretty(str(stack.back())), pretty(color)]
 
 func move_column_to_berth(col: int, berth: int) -> String:
-	var color := _column_top(col)
-	if color == "":
-		return "Nothing on that column to move."
+	var token := _column_top(col)
+	var blocked := _blocked_reason(token)
+	if blocked != "":
+		return blocked
+	var color := cargo_color(token)
 	if not can_accept(color, berth):
 		return reject_reason(color, berth)
 	_push_history()
@@ -121,14 +153,24 @@ func move_column_to_berth(col: int, berth: int) -> String:
 	return ""
 
 func move_column_to_hold(col: int) -> String:
-	var color := _column_top(col)
-	if color == "":
-		return "Nothing on that column to move."
+	var token := _column_top(col)
+	var blocked := _blocked_reason(token)
+	if blocked != "":
+		return blocked
 	if hold != "":
 		return "The hold already has a container."
 	_push_history()
 	(columns[col] as Array).pop_front()
-	hold = color
+	hold = cargo_color(token)
+	last_shipped = ""
+	moves_done += 1
+	return ""
+
+func collect_key(col: int) -> String:
+	if _column_top(col) != "key":
+		return "That is not a key."
+	_push_history()
+	(columns[col] as Array).pop_front()
 	last_shipped = ""
 	moves_done += 1
 	return ""
@@ -166,27 +208,22 @@ func is_win() -> bool:
 	return true
 
 func is_soft_fail() -> bool:
-	if is_win():
-		return false
-	if hold == "" and _any_column():
-		return false
-	if hold != "" and _any_berth_accepts(hold):
-		return false
-	for col in columns:
-		var stack: Array = col
-		if stack.is_empty():
-			continue
-		if _any_berth_accepts(str(stack[0])):
-			return false
-	return true
+	return not is_win() and legal_moves(true).is_empty()
 
 func legal_moves(allow_hold: bool = true) -> Array:
 	var out: Array = []
+	var key_blocks := deck_has_key()
 	for i in columns.size():
 		var stack: Array = columns[i]
 		if stack.is_empty():
 			continue
-		var color := str(stack[0])
+		var token := str(stack[0])
+		if token == "key":
+			out.append({"op": "collect", "col": i})
+			continue
+		if is_locked(token) and key_blocks:
+			continue
+		var color := cargo_color(token)
 		for j in berths.size():
 			if can_accept(color, j):
 				out.append({"op": "deck_berth", "col": i, "berth": j})
@@ -206,6 +243,8 @@ func apply_move(move: Dictionary) -> String:
 			return move_column_to_hold(int(move["col"]))
 		"hold_berth":
 			return move_hold_to_berth(int(move["berth"]))
+		"collect":
+			return collect_key(int(move["col"]))
 	return "Unknown move."
 
 func state_key() -> String:
@@ -237,6 +276,16 @@ func pretty(color: String) -> String:
 	if color == "":
 		return "Empty"
 	return color.substr(0, 1).to_upper() + color.substr(1)
+
+func _blocked_reason(token: String) -> String:
+	if token == "":
+		return "Nothing on that column to move."
+	if token == "key":
+		return "Tap the key to collect it."
+	if is_locked(token) and deck_has_key():
+		return "That container is locked. Collect the key first."
+	return ""
+
 
 func _column_top(col: int) -> String:
 	if col < 0 or col >= columns.size():

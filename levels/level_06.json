@@ -1,0 +1,28 @@
+{
+  "id": 6,
+  "title": "Second Look",
+  "blurb": "Each column is one colour. Ship them in any order.",
+  "undo_limit": 2,
+  "capacity": 3,
+  "berths": [
+    "",
+    ""
+  ],
+  "columns": [
+    [
+      "coral",
+      "coral",
+      "coral"
+    ],
+    [
+      "teal",
+      "teal",
+      "teal"
+    ],
+    [
+      "gold",
+      "gold",
+      "gold"
+    ]
+  ]
+}

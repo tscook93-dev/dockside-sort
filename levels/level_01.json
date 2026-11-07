@@ -1,13 +1,29 @@
 {
   "id": 1,
   "title": "Morning Shift",
-  "blurb": "Tap the top container, then its matching stack. A full stack ships.",
-  "undo_limit": 0,
+  "blurb": "Tap the top container, then its matching stack.",
+  "undo_limit": 3,
   "capacity": 3,
-  "berths": ["coral", "teal", "gold"],
+  "berths": [
+    "coral",
+    "teal",
+    "gold"
+  ],
   "columns": [
-    ["coral", "coral", "coral"],
-    ["teal", "teal", "teal"],
-    ["gold", "gold", "gold"]
+    [
+      "coral",
+      "coral",
+      "coral"
+    ],
+    [
+      "teal",
+      "teal",
+      "teal"
+    ],
+    [
+      "gold",
+      "gold",
+      "gold"
+    ]
   ]
 }

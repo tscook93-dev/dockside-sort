@@ -1,0 +1,28 @@
+{
+  "id": 7,
+  "title": "Short Stack",
+  "blurb": "The colours are braided. One hold is enough.",
+  "undo_limit": 1,
+  "capacity": 3,
+  "berths": [
+    "",
+    ""
+  ],
+  "columns": [
+    [
+      "coral",
+      "gold",
+      "teal"
+    ],
+    [
+      "teal",
+      "coral",
+      "gold"
+    ],
+    [
+      "gold",
+      "teal",
+      "coral"
+    ]
+  ]
+}

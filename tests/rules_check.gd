@@ -18,22 +18,22 @@ func _init() -> void:
 
 func _run() -> void:
 	var paths := PuzzleScript.list_level_paths()
-	_check(paths.size() == 3, "three level files, got %d" % paths.size())
-	if paths.size() != 3:
+	_check(paths.size() == 17, "seventeen level files, got %d" % paths.size())
+	if paths.size() != 17:
 		return
 	var levels: Array = []
 	for path in paths:
 		levels.append(PuzzleScript.load_level(path))
 	_check(str(levels[0].get("title", "")) == "Morning Shift", "level 1 title")
-	_check(str(levels[1].get("title", "")) == "Tight Berth", "level 2 title")
-	_check(str(levels[2].get("title", "")) == "Cross Load", "level 3 title")
+	_check(str(levels[7].get("title", "")) == "The Key", "level 8 title")
+	_check(str(levels[12].get("title", "")) == "Double High", "level 13 title")
 
 	_play_script(levels[0], _level1_win(), true, false, "level 1 scripted win")
-	_play_script(levels[1], _level2_win(), true, false, "level 2 scripted win")
-	_play_script(levels[1], _level2_fail(), false, true, "level 2 scripted soft fail")
-	_play_script(levels[2], _level3_win(), true, false, "level 3 scripted win")
-	_play_script(levels[2], _level3_fail(), false, true, "level 3 scripted soft fail")
-	_check_undo_depth(levels[1])
+	_play_script(levels[2], _level2_win(), true, false, "level 3 scripted win")
+	_play_script(levels[2], _level2_fail(), false, true, "level 3 scripted soft fail")
+	_play_script(levels[3], _level3_win(), true, false, "level 4 scripted win")
+	_play_script(levels[3], _level3_fail(), false, true, "level 4 scripted soft fail")
+	_check_undo_depth(levels[2])
 	_check_illegal_does_not_record(levels[0])
 	_check_scoring_and_save()
 
@@ -43,7 +43,7 @@ func _run() -> void:
 	var no_hold1 := _search(levels[0], false)
 	_check(int(no_hold1["solution"]) == 9, "level 1 solvable without the hold")
 
-	for i in [1, 2]:
+	for i in [2, 3]:
 		var with_hold: Dictionary = _search(levels[i], true)
 		var no_hold: Dictionary = _search(levels[i], false)
 		_check(int(with_hold["solution"]) > 0, "level %d solvable" % (i + 1))

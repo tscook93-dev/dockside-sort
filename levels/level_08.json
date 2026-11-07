@@ -1,0 +1,32 @@
+{
+  "id": 8,
+  "title": "The Key",
+  "blurb": "Tap the key, then the locked container can move.",
+  "undo_limit": 2,
+  "capacity": 3,
+  "berths": [
+    "",
+    "",
+    ""
+  ],
+  "columns": [
+    [
+      "key",
+      "teal",
+      "coral"
+    ],
+    [
+      "locked:coral",
+      "coral",
+      "teal"
+    ],
+    [
+      "teal",
+      "gold",
+      "gold"
+    ],
+    [
+      "gold"
+    ]
+  ]
+}

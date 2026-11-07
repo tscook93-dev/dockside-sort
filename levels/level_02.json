@@ -1,13 +1,29 @@
 {
   "id": 2,
-  "title": "Tight Berth",
-  "blurb": "Only two stacks. Same colour only — park a blocker in the hold.",
-  "undo_limit": 1,
+  "title": "Stack Call",
+  "blurb": "Same colours still stack. The piles are mixed.",
+  "undo_limit": 3,
   "capacity": 3,
-  "berths": ["", ""],
+  "berths": [
+    "coral",
+    "teal",
+    "gold"
+  ],
   "columns": [
-    ["coral", "gold", "coral"],
-    ["gold", "teal", "gold"],
-    ["teal", "coral", "teal"]
+    [
+      "coral",
+      "teal",
+      "coral"
+    ],
+    [
+      "teal",
+      "gold",
+      "teal"
+    ],
+    [
+      "gold",
+      "coral",
+      "gold"
+    ]
   ]
 }
