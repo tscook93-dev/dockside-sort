@@ -61,7 +61,7 @@ Workflow artifacts are also uploaded, as a fallback that does require a GitHub l
 
 Tap the bright top container of a column, then tap a stack or the hold. A stack only takes its own colour. On level 1 the three stacks are pinned (Coral, Teal, Gold). On levels 2 and 3 an empty stack accepts any colour, and it ships when it holds 3 of that colour. Undo and Restart are free.
 
-The game opens on the ship list. Desktop keys: `1` `2` `3` start an unlocked level, `S` opens settings. On a level, `1` `2` `3` select columns, `Q` `W` `E` place on stacks, `H` hold, `U` undo, `R` restart, `L` returns to the list, Space confirms the prompt.
+The game opens on the ship list. All 30 ships are on that list. A locked row stays locked until the ship before it is cleared, and an existing save is kept. Drag the list to move it. Desktop keys: `1` `2` `3` start an unlocked level, `S` opens settings. On a level, `1` `2` `3` select columns, `Q` `W` `E` place on stacks, `H` hold, `U` undo, `R` restart, `L` returns to the list, Space confirms the prompt.
 
 ## Levels
 
