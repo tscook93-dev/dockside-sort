@@ -162,7 +162,7 @@ func _select_column(col: int) -> void:
 		_set_status("That column is empty.")
 		_refresh()
 		return
-	var empties := deck_height - stack.size()
+	var empties: int = column_cells[col].size() - stack.size()
 	_on_cell(col, empties)
 
 
@@ -170,10 +170,11 @@ func _on_cell(col: int, row: int) -> void:
 	if _modal_blocking():
 		return
 	var stack: Array = puzzle.columns[col]
-	if stack.is_empty() or row < deck_height - stack.size():
+	var rows: int = column_cells[col].size()
+	if stack.is_empty() or row < rows - stack.size():
 		_set_status("Empty cell.")
 		return
-	if row != deck_height - stack.size():
+	if row != rows - stack.size():
 		_set_status("Only the top container can move.")
 		return
 	var token := str(stack[0])
@@ -577,8 +578,9 @@ func _refresh() -> void:
 	moves_label.text = "Undos %d" % puzzle.undos_used
 	for c in puzzle.columns.size():
 		var stack: Array = puzzle.columns[c]
-		var empties := deck_height - stack.size()
-		for r in deck_height:
+		var rows: int = column_cells[c].size()
+		var empties := rows - stack.size()
+		for r in rows:
 			var cell = column_cells[c][r]
 			if r < empties:
 				cell.clear_face(Color(0.45, 0.32, 0.16, 0.28))
@@ -597,8 +599,13 @@ func _refresh() -> void:
 				else:
 					cell.show_cargo(PALETTE[color_name], GLYPHS[color_name])
 				var is_top := r == empties
-				cell.modulate = Color.WHITE if is_top else Color(0.66, 0.66, 0.66)
+				# Buried cargo keeps the same fill. A grey multiply made teal look like another colour.
+				cell.modulate = Color.WHITE
 				cell.set_selected(is_top and sel_kind == "column" and sel_index == c)
+				var mark := ""
+				if puzzle.is_double_column(c) and not PuzzleScript.is_key(token_name):
+					mark = "TOP" if is_top else "UNDER"
+				cell.set_order_mark(mark)
 				cell.tooltip_text = puzzle.pretty(color_name)
 	for b in puzzle.berths.size():
 		var berth = berth_buttons[b]
@@ -625,12 +632,14 @@ func _rebuild_board() -> void:
 		var col_box := VBoxContainer.new()
 		col_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		col_box.add_theme_constant_override("separation", 8)
-		var caption_text := "2-high" if puzzle.is_double_column(c) else "Col %d" % (c + 1)
+		var double_col: bool = puzzle.is_double_column(c)
+		var caption_text := "Top, then bottom" if double_col else "Col %d" % (c + 1)
 		var caption := _label(caption_text, 22, CREAM)
 		caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		col_box.add_child(caption)
 		var cells: Array = []
-		for r in deck_height:
+		var row_count := 2 if double_col else deck_height
+		for r in row_count:
 			var cell: Button = Glyph.new()
 			cell.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			cell.size_flags_vertical = Control.SIZE_EXPAND_FILL

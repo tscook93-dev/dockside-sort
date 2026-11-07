@@ -7,6 +7,7 @@ var radius := 16
 var glyph := ""
 var mark_selected := false
 var show_lock := false
+var order_mark := ""
 
 func _ready() -> void:
 	focus_mode = Control.FOCUS_NONE
@@ -18,10 +19,15 @@ func show_cargo(fill_c: Color, glyph_name: String, locked := false) -> void:
 	show_lock = locked
 	queue_redraw()
 
+func set_order_mark(mark: String) -> void:
+	order_mark = mark
+	queue_redraw()
+
 func clear_face(fill_c: Color) -> void:
 	fill = fill_c
 	glyph = ""
 	show_lock = false
+	order_mark = ""
 	queue_redraw()
 
 func set_selected(on: bool) -> void:
@@ -38,8 +44,17 @@ func _draw() -> void:
 	if glyph != "":
 		paint_glyph(self, Rect2(Vector2.ZERO, size), glyph, Color("1a120f"))
 	if show_lock:
-		var badge := minf(size.x, size.y) * 0.18
-		draw_rect(Rect2(Vector2(size.x - badge - 8.0, 8.0), Vector2(badge, badge)), Color("1a120f"))
+		var ink := Color("1a120f")
+		var body := minf(size.x, size.y)
+		var cx := size.x * 0.5
+		var cy := size.y * 0.52
+		draw_arc(Vector2(cx, cy - body * 0.06), body * 0.16, PI, TAU, 16, ink, 7.0, true)
+		draw_rect(Rect2(cx - body * 0.18, cy, body * 0.36, body * 0.28), ink)
+		draw_circle(Vector2(cx, cy + body * 0.12), body * 0.045, fill)
+	if order_mark != "":
+		var font := ThemeDB.fallback_font
+		var mark_size := int(maxf(18.0, minf(size.x, size.y) * 0.2))
+		draw_string(font, Vector2(0, size.y - 8), order_mark, HORIZONTAL_ALIGNMENT_CENTER, size.x, mark_size, Color("1a120f"))
 
 static func paint_glyph(control: Control, rect: Rect2, glyph_name: String, ink: Color) -> void:
 	if glyph_name == "":
