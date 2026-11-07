@@ -21,7 +21,11 @@ var berths: Array = []
 var hold := ""
 ## Second permanent hold. Stays empty unless permanent_slots is 2. Not a temporary assist.
 var hold2 := ""
+var hold3 := ""
 var permanent_slots := 1
+## One extra hold for this unfinished attempt. Not part of the solver's one-hold search.
+var extra_slot := false
+var free_undos_left := 3
 var history: Array = []
 var moves_done := 0
 var undos_used := 0
@@ -85,7 +89,10 @@ func setup(data: Dictionary) -> void:
 		berths.append([])
 	hold = ""
 	hold2 = ""
+	hold3 = ""
 	permanent_slots = 1
+	extra_slot = false
+	free_undos_left = 3
 	history = []
 	moves_done = 0
 	undos_used = 0
@@ -158,7 +165,20 @@ func move_column_to_berth(col: int, berth: int) -> String:
 	return ""
 
 func hold_color(slot: int) -> String:
-	return hold2 if slot == 1 else hold
+	if slot == 1:
+		return hold2
+	if slot == 2:
+		return hold3
+	return hold
+
+
+func _set_hold(slot: int, color: String) -> void:
+	if slot == 1:
+		hold2 = color
+	elif slot == 2:
+		hold3 = color
+	else:
+		hold = color
 
 
 func move_column_to_hold(col: int, slot: int = 0) -> String:
@@ -168,15 +188,13 @@ func move_column_to_hold(col: int, slot: int = 0) -> String:
 		return blocked
 	if slot == 1 and permanent_slots < 2:
 		return "The second hold is not open."
+	if slot == 2 and not extra_slot:
+		return "The extra hold is not open."
 	if hold_color(slot) != "":
 		return "That hold already has a container."
 	_push_history()
 	(columns[col] as Array).pop_front()
-	var color := cargo_color(token)
-	if slot == 1:
-		hold2 = color
-	else:
-		hold = color
+	_set_hold(slot, cargo_color(token))
 	last_shipped = ""
 	moves_done += 1
 	return ""
@@ -197,10 +215,7 @@ func move_hold_to_berth(berth: int, slot: int = 0) -> String:
 	if not can_accept(color, berth):
 		return reject_reason(color, berth)
 	_push_history()
-	if slot == 1:
-		hold2 = ""
-	else:
-		hold = ""
+	_set_hold(slot, "")
 	(berths[berth] as Array).append(color)
 	_ship_if_full(berth)
 	moves_done += 1
@@ -215,7 +230,7 @@ func undo() -> bool:
 	return true
 
 func is_win() -> bool:
-	if hold != "" or hold2 != "":
+	if hold != "" or hold2 != "" or hold3 != "":
 		return false
 	for col in columns:
 		if not (col as Array).is_empty():
@@ -249,6 +264,8 @@ func legal_moves(allow_hold: bool = true) -> Array:
 			out.append({"op": "deck_hold", "col": i, "slot": 0})
 		if allow_hold and permanent_slots >= 2 and hold2 == "":
 			out.append({"op": "deck_hold", "col": i, "slot": 1})
+		if allow_hold and extra_slot and hold3 == "":
+			out.append({"op": "deck_hold", "col": i, "slot": 2})
 	if allow_hold and hold != "":
 		for j in berths.size():
 			if can_accept(hold, j):
@@ -257,6 +274,10 @@ func legal_moves(allow_hold: bool = true) -> Array:
 		for j in berths.size():
 			if can_accept(hold2, j):
 				out.append({"op": "hold_berth", "berth": j, "slot": 1})
+	if allow_hold and hold3 != "":
+		for j in berths.size():
+			if can_accept(hold3, j):
+				out.append({"op": "hold_berth", "berth": j, "slot": 2})
 	return out
 
 func apply_move(move: Dictionary) -> String:
@@ -284,6 +305,8 @@ func state_key() -> String:
 	parts.append(hold)
 	parts.append("|")
 	parts.append(hold2)
+	parts.append("|")
+	parts.append(hold3)
 	return "".join(parts)
 
 func snapshot() -> Dictionary:
@@ -292,6 +315,7 @@ func snapshot() -> Dictionary:
 		"berths": _clone(berths),
 		"hold": hold,
 		"hold2": hold2,
+		"hold3": hold3,
 		"moves_done": moves_done,
 	}
 
@@ -351,6 +375,7 @@ func _restore_snap(snap: Dictionary) -> void:
 	berths = _clone(snap["berths"])
 	hold = str(snap["hold"])
 	hold2 = str(snap.get("hold2", ""))
+	hold3 = str(snap.get("hold3", ""))
 	moves_done = int(snap["moves_done"])
 	last_shipped = ""
 

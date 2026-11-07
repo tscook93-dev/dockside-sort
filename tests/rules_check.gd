@@ -2,6 +2,7 @@ extends SceneTree
 
 const PuzzleScript := preload("res://scripts/puzzle.gd")
 const ProgressScript := preload("res://scripts/progress.gd")
+const OffersScript := preload("res://scripts/offers.gd")
 
 var failures := 0
 
@@ -39,6 +40,7 @@ func _run() -> void:
 	_check_illegal_does_not_record(levels[0])
 	_check_scoring_and_save()
 	_check_m4(levels[0], levels[2])
+	_check_m5()
 
 	var open1 := _search(levels[0], true)
 	_check(int(open1["solution"]) == 9, "level 1 solution length %s" % str(open1["solution"]))
@@ -392,6 +394,129 @@ func _check_m4(level1: Dictionary, level3: Dictionary) -> void:
 		wide_hold.apply_move(move)
 	_check(not wide_hold.is_soft_fail(), "an empty second permanent hold is still a legal move")
 	for path in ["user://m4_daily.cfg", "user://m4_hold.cfg", "user://m4_legacy.cfg", "user://m4_streak.cfg"]:
+		if FileAccess.file_exists(path):
+			DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+
+
+func _check_m5() -> void:
+	var offers = OffersScript.new()
+	var started: Dictionary = offers.begin_rewarded("demo", 4)
+	_check(bool(started["ok"]), "a local test reward can start")
+	var busy: Dictionary = offers.begin_rewarded("demo", 4)
+	_check(not bool(busy["ok"]) and str(busy["reason"]) == "busy", "a busy provider does not start a second reward")
+	var cancelled: Dictionary = offers.resolve_rewarded(int(started["id"]), "cancelled", 4)
+	_check(not bool(cancelled["granted"]), "cancel grants nothing")
+	var again: Dictionary = offers.resolve_rewarded(int(started["id"]), "completed", 4)
+	_check(not bool(again["granted"]) and str(again["reason"]) == "duplicate", "a second callback grants nothing")
+	var failed_start: Dictionary = offers.begin_rewarded("demo", 4)
+	var failed: Dictionary = offers.resolve_rewarded(int(failed_start["id"]), "failed", 4)
+	_check(not bool(failed["granted"]), "failure grants nothing")
+	var unavailable_start: Dictionary = offers.begin_rewarded("demo", 4)
+	var unavailable: Dictionary = offers.resolve_rewarded(int(unavailable_start["id"]), "unavailable", 4)
+	_check(not bool(unavailable["granted"]), "unavailable grants nothing")
+	var ok_start: Dictionary = offers.begin_rewarded("double_coins", 7)
+	var stale: Dictionary = offers.resolve_rewarded(int(ok_start["id"]), "completed", 8)
+	_check(not bool(stale["granted"]) and str(stale["reason"]) == "stale", "an old level callback does not grant")
+	var once_start: Dictionary = offers.begin_rewarded("double_coins", 9)
+	var once: Dictionary = offers.resolve_rewarded(int(once_start["id"]), "completed", 9)
+	_check(bool(once["granted"]), "one completed callback grants once")
+	var held: Dictionary = offers.purchase("pack-1", "cancelled", true, 50)
+	_check(not bool(held["ok"]) and int(held["coins"]) == 0, "a cancelled purchase grants nothing")
+	var pack: Dictionary = offers.purchase("pack-1", "completed", true, 50)
+	_check(bool(pack["ok"]) and int(pack["coins"]) == 50, "a completed test purchase reports its coins once")
+	var pack_again: Dictionary = offers.purchase("pack-1", "completed", true, 50)
+	_check(not bool(pack_again["ok"]) and int(pack_again["coins"]) == 0, "the same transaction does not pay twice")
+	var entitlement: Dictionary = offers.purchase("ads-1", "completed", false, 100)
+	_check(bool(entitlement["ok"]) and offers.no_forced_ads and int(entitlement["coins"]) == 0, "No forced ads adds no coins")
+	var restored: Dictionary = offers.restore()
+	_check(bool(restored["no_forced_ads"]) and int(restored["coins"]) == 0, "restore returns the entitlement and no coins")
+	_check_m5_rules(offers)
+	var wallet = ProgressScript.new()
+	wallet.path = "user://m5_wallet.cfg"
+	wallet.coins = 20
+	_check(not wallet.try_spend(-5) and wallet.coins == 20, "a negative spend does not change coins")
+	_check(not wallet.try_spend(21) and wallet.coins == 20, "an unaffordable spend does not change coins")
+	_check(wallet.try_spend(5) and wallet.coins == 15, "an affordable spend debits once")
+	var legacy = ProgressScript.new()
+	legacy.path = "user://m5_legacy.cfg"
+	var old := ConfigFile.new()
+	old.set_value("player", "coins", 80)
+	old.set_value("player", "unlocked_through", 4)
+	old.set_value("player", "stars", {"2": 3})
+	old.save(legacy.path)
+	legacy.load_file()
+	_check(legacy.coins == 80 and legacy.unlocked_through == 4 and legacy.best_for(2) == 3 and not legacy.test_no_forced_ads, "a legacy save ignores the local test ledger")
+	for path in ["user://m5_wallet.cfg", "user://m5_legacy.cfg"]:
+		if FileAccess.file_exists(path):
+			DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+
+
+func _check_m5_rules(_offers) -> void:
+	var board = PuzzleScript.new()
+	board.setup({"id": 4, "capacity": 3, "undo_limit": 1, "berths": [""], "columns": [["coral", "coral", "coral", "coral", "coral"]]})
+	for _i in 4:
+		board.move_column_to_berth(0, 0)
+	_check(board.free_undos_left == 3 and board.history.size() >= 4, "history is kept and the free undo budget starts at 3")
+	for _i in 3:
+		_check(board.undo(), "free undo succeeds")
+		board.free_undos_left -= 1
+	_check(board.free_undos_left == 0, "the fourth undo is no longer free")
+	var payer = ProgressScript.new()
+	payer.path = "user://m5_undo.cfg"
+	payer.coins = 40
+	_check(not payer.try_spend(ProgressScript.UNDO_PRICE) and payer.coins == 40, "40 coins does not buy an undo")
+	payer.coins = 50
+	_check(payer.try_spend(ProgressScript.UNDO_PRICE) and payer.coins == 0, "50 coins pays for one undo")
+	_check(board.undo() and payer.coins == 0, "undo does not refund the 50 coins")
+	board.setup({"id": 4, "capacity": 3, "undo_limit": 1, "berths": [""], "columns": [["coral"]]})
+	_check(board.free_undos_left == 3 and board.history.is_empty(), "restart resets the free undo budget")
+	var slot = ProgressScript.new()
+	slot.path = "user://m5_temp.cfg"
+	slot.coins = 100
+	var opened: Dictionary = slot.buy_temp(8, false)
+	_check(bool(opened["ok"]) and slot.coins == 0 and slot.temp_active(8, false), "100 coins opens one extra hold")
+	var repeat: Dictionary = slot.buy_temp(8, false)
+	_check(not bool(repeat["ok"]) and slot.coins == 0, "an active extra hold is not bought again")
+	slot.clear_temp_for_other(8, false)
+	_check(slot.temp_active(8, false), "the extra hold stays on the same unfinished level")
+	slot.clear_temp_for_other(9, false)
+	_check(not slot.temp_active(8, false), "a different level clears the extra hold")
+	var kept: Dictionary = slot.grant_temp(8, false)
+	_check(bool(kept["ok"]), "a simulated reward can grant the extra hold")
+	slot.save_file()
+	var loaded = ProgressScript.new()
+	loaded.path = slot.path
+	loaded.load_file()
+	_check(loaded.temp_active(8, false) and loaded.coins == 0, "the extra hold reloads on the same level")
+	loaded.finish_temp()
+	_check(loaded.temp_level_id < 0, "finishing the level clears the extra hold")
+	_check(ProgressScript.stars_for(0, 3, true) == 2, "the extra hold still caps stars at 2")
+	var ads = ProgressScript.new()
+	ads.path = "user://m5_ads.cfg"
+	ads.test_now_ms = 0
+	ads.record_clear(9, 10, 30, 0, 0, false)
+	_check(not ads.on_main_clear(10) and ads.interstitial_armed and ads.interstitial_count == 0, "the first level 10 clear shows no interstitial and starts the counter at 0")
+	_check(not ads.on_main_clear(11), "the first later clear is not an interstitial")
+	_check(not ads.on_main_clear(12), "the second later clear is not an interstitial")
+	_check(ads.on_main_clear(13) and ads.interstitial_count == 0, "the third later clear is the interstitial and the counter resets")
+	ads.stamp_ad()
+	ads.test_now_ms = 1000
+	_check(not ads.on_main_clear(14), "a clear inside the cooldown is not an interstitial")
+	_check(not ads.on_main_clear(15), "the next clear is still not due")
+	_check(not ads.on_main_clear(16) and ads.interstitial_count == 0, "a due clear inside the cooldown is skipped and not queued")
+	ads.test_now_ms = 1000 + ProgressScript.AD_GAP_MS
+	_check(not ads.on_main_clear(17), "the first clear after the cooldown is not yet due")
+	_check(not ads.on_main_clear(18), "the second clear after the cooldown is not yet due")
+	_check(ads.on_main_clear(19), "a later third clear can show after 90 seconds")
+	ads.test_no_forced_ads = true
+	_check(not ads.on_main_clear(20), "No forced ads suppresses a clear that is not due")
+	_check(not ads.on_main_clear(21), "No forced ads suppresses the next clear")
+	_check(not ads.on_main_clear(22), "No forced ads suppresses the interstitial and still resets the counter")
+	var early = ProgressScript.new()
+	early.path = "user://m5_early.cfg"
+	_check(not early.on_main_clear(4) and not early.interstitial_armed, "clears before level 10 do not count")
+	_check(int(ProgressScript.PACKS["S"]["coins"]) == 500 and int(ProgressScript.PACKS["M"]["coins"]) == 1500 and int(ProgressScript.PACKS["L"]["coins"]) == 3500, "simulated packs are 500, 1500, and 3500 coins")
+	for path in ["user://m5_undo.cfg", "user://m5_temp.cfg", "user://m5_ads.cfg", "user://m5_early.cfg"]:
 		if FileAccess.file_exists(path):
 			DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
 

@@ -94,8 +94,8 @@ Colours: `coral` circle, `teal` square, `gold` triangle, `indigo` diamond.
 - [x] M2 Level flow (level progression, 3-star scoring, coin payout, local save, restart, settings shell) — done, pending Tobias's merge of #2
 - [x] M3a First levels, part 1 (levels 1–17, FTUE, locked container + key, 4th colour, double-high; readability fixes) — merged in #3
 - [x] M3b Levels 18–30 with the mechanics already in the game — merged in #4
-- [x] M4 Sydney hub, chunky 2.5D kit, second permanent hold, UTC daily dock, 7-day streak and one freeze token — in this branch for playtest, not merged and not a release build
-- [ ] M5 Monetisation hooks (rewarded, interstitial rules, No Forced Ads, coin packs S/M/L; test/sandbox IDs only)
+- [x] M4 Sydney hub, chunky 2.5D kit, second permanent hold, UTC daily dock, 7-day streak and one freeze token — merged in #5
+- [ ] M5 Simulated monetisation, approved for local testing only. No store SDK, no ad SDK, and not a release build
 - [ ] M6 Analytics (the brief's event list behind one thin wrapper; debug sink first)
 - [ ] M7 Soft-launch build (release signing, compliance checklist, crash tooling, Philippines release candidate)
 
@@ -142,9 +142,23 @@ Tobias approved this package for the current branch. It is not a store release. 
 - **Daily dock.** It opens after level 5 has been cleared. The layout is an existing main level. The UTC day number, `floor(unix UTC seconds / 86400) mod 7`, picks it: 0 level 18, 1 level 19, 2 level 20, 3 level 21, 4 level 22, 5 level 23, 6 level 24. The first clear of that UTC day pays 30 coins. The same day pays 0 after a replay or a reload. It does not change main stars, the first-clear coin payout, or which ship is unlocked. The port shows when today is already done.
 - **Streak.** The first visit to the port on a UTC day credits once: 10, 10, 15, 15, 20, 20, 30. The day after day 7 starts again at day 1. There is no second claim button. A miss of one UTC day with no freeze token makes the next credit day 1. Coins already owned stay. Day 7 grants one freeze token, and the cap is 1. Coming back after exactly one missed day spends that token and continues the next streak step. Two or more missed days reset the next credit to day 1 and keep the token. Missed days pay nothing.
 
+## M5 simulated test package, approved 7 Nov 2026
+
+Tobias approved these values for simulated local testing only. They are not production prices. Settings says "Local test" and "not a checkout." There is no ad SDK and no store SDK. Cancel, failure, unavailable, a repeated callback, and a callback from another level grant nothing. A purchase is stored once per transaction. Restore puts back No forced ads and does not pay pack coins again. The coin balance never goes negative.
+
+- **Undo.** Each attempt has 3 free successful undos, separate from the star limit. After that, a successful undo costs 50 coins, or one completed simulated reward does one undo immediately. An empty history does not offer or debit. Restart resets the 3 free undos. Undo does not refund coins or remove the extra hold. History still keeps 40 moves.
+- **Extra hold.** 100 coins, or one completed simulated reward, adds one hold for the current unfinished level. It stays through restart and leaving the app, and it clears when the level is finished or another ship is opened. It cannot be bought again while it is active. It still caps that clear at 2 stars. Restart stays free.
+- **Double coins.** Only a main clear that paid for newly earned stars can be doubled, once, by a completed simulated reward. The bonus equals that payout, not the wallet. A replay with no new stars, a daily clear, and streak or pack coins are not doubled.
+- **Simulated packs.** S is 500 coins at USD 1.99 / AUD 2.99. M is 1500 at USD 4.99 / AUD 7.99. L is 3500 at USD 9.99 / AUD 14.99. Simulated No forced ads is USD 9.99 / AUD 14.99. It turns off the simulated interstitial. Rewarded tests stay available.
+- **Simulated interstitial.** After the first clear of level 10, which itself shows nothing and starts the count at 0, every third later main clear can show one. It is skipped on a fail, restart, daily, open, exit, or during a puzzle. It needs 90 seconds since any simulated ad, including a rewarded one. No forced ads suppresses it. The count still resets, and a skipped one is not saved for later. It appears before the results. The results screen does not show a second one.
+
 ## Still not in this build
 
-Ads, the temporary hold, coin packs, conveyor, glass, colour gates, accounts, and a shop. No store listing, production SDK, or device sign-off. A phone clock set forward can collect streak and daily rewards early; that is a known prototype limit.
+A real ad network, a real store, production product IDs, conveyor, glass, colour gates, accounts, and analytics. No store listing or device sign-off. A phone clock set forward can collect streak and daily rewards early; that is a known prototype limit.
+
+## Still not in this build
+
+A real ad network, a real store, production product IDs, the temporary hold's price and cap, conveyor, glass, colour gates, accounts, and analytics. No store listing or device sign-off. A phone clock set forward can collect streak and daily rewards early; that is a known prototype limit.
 
 ## Release gates still open
 
