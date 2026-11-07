@@ -38,6 +38,7 @@ func _run() -> void:
 	_check_undo_depth(levels[2])
 	_check_illegal_does_not_record(levels[0])
 	_check_scoring_and_save()
+	_check_m4(levels[0], levels[2])
 
 	var open1 := _search(levels[0], true)
 	_check(int(open1["solution"]) == 9, "level 1 solution length %s" % str(open1["solution"]))
@@ -243,6 +244,156 @@ func _check_progress_to_30() -> void:
 	_check(loaded.seen_ftue(1), "skipped tutorial is remembered")
 	if FileAccess.file_exists(path):
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+
+
+func _check_m4(level1: Dictionary, level3: Dictionary) -> void:
+	for slot in 7:
+		var mapped = ProgressScript.new()
+		mapped.test_utc_day = 70 + slot
+		_check(mapped.daily_level_id() == 18 + slot, "UTC day slot %d uses level %d" % [slot, 18 + slot])
+	var early = ProgressScript.new()
+	early.test_utc_day = 3
+	var closed: Dictionary = early.record_daily_clear()
+	_check(not bool(closed["paid"]) and early.coins == 0 and early.daily_cleared_day < 0, "daily stays closed before level 5")
+	var daily = ProgressScript.new()
+	daily.path = "user://m4_daily.cfg"
+	daily.test_utc_day = 14
+	daily.best_stars = {"5": 3, "18": 1}
+	daily.unlocked_through = 8
+	daily.coins = 5
+	var first: Dictionary = daily.record_daily_clear()
+	_check(bool(first["paid"]) and daily.coins == 35, "first daily clear pays 30")
+	_check(daily.best_for(18) == 1 and daily.best_for(19) == 0 and daily.unlocked_through == 8, "daily does not change main stars or unlocks")
+	var repeat: Dictionary = daily.record_daily_clear()
+	_check(not bool(repeat["paid"]) and daily.coins == 35, "the same UTC day pays 0")
+	daily.save_file()
+	var reloaded = ProgressScript.new()
+	reloaded.path = daily.path
+	reloaded.test_utc_day = 14
+	reloaded.load_file()
+	var replay: Dictionary = reloaded.record_daily_clear()
+	_check(not bool(replay["paid"]) and reloaded.coins == 35 and reloaded.best_for(18) == 1, "reloading the same UTC day does not pay again")
+	reloaded.test_utc_day = 15
+	_check(reloaded.daily_level_id() == 19, "the next UTC day uses level 19")
+	var nxt: Dictionary = reloaded.record_daily_clear()
+	_check(bool(nxt["paid"]) and reloaded.coins == 65 and reloaded.best_for(19) == 0 and reloaded.unlocked_through == 8, "a new UTC day pays 30 without main rewards")
+	var offer = ProgressScript.new()
+	offer.path = "user://m4_hold.cfg"
+	offer.coins = 500
+	var locked: Dictionary = offer.buy_second_hold()
+	_check(not bool(locked["ok"]) and offer.coins == 500 and not offer.second_hold, "the hold cannot be bought before level 15")
+	offer.record_clear(14, 15, 30, 0, 3, false)
+	_check(offer.upgrade_unlocked and not offer.second_hold, "the first level 15 clear unlocks the offer")
+	offer.coins = 299
+	var poor: Dictionary = offer.buy_second_hold()
+	_check(not bool(poor["ok"]) and offer.coins == 299 and not offer.second_hold, "299 coins does not debit or grant the hold")
+	offer.coins = 300
+	var bought: Dictionary = offer.buy_second_hold()
+	_check(bool(bought["ok"]) and offer.coins == 0 and offer.second_hold, "300 coins buys the hold once")
+	var twice: Dictionary = offer.buy_second_hold()
+	_check(not bool(twice["ok"]) and offer.coins == 0, "a repeat tap does not debit again")
+	var held = ProgressScript.new()
+	held.path = offer.path
+	held.load_file()
+	var after: Dictionary = held.buy_second_hold()
+	_check(held.second_hold and held.coins == 0 and not bool(after["ok"]) and held.upgrade_unlocked, "the purchase reloads once")
+	var legacy_path := "user://m4_legacy.cfg"
+	var old := ConfigFile.new()
+	old.set_value("player", "coins", 40)
+	old.set_value("player", "unlocked_through", 6)
+	old.set_value("player", "stars", {"1": 3, "5": 1, "15": 2})
+	old.save(legacy_path)
+	var legacy = ProgressScript.new()
+	legacy.path = legacy_path
+	legacy.load_file()
+	_check(legacy.coins == 40 and legacy.unlocked_through == 6 and legacy.best_for(1) == 3 and legacy.best_for(15) == 2, "a legacy save keeps stars, coins, and unlocks")
+	_check(legacy.upgrade_unlocked and not legacy.second_hold and legacy.freeze_tokens == 0, "a legacy level 15 clear offers the hold and grants nothing else")
+	var streak = ProgressScript.new()
+	streak.path = "user://m4_streak.cfg"
+	streak.test_utc_day = 200
+	streak.on_hub_visit()
+	_check(streak.coins == 10 and streak.streak_next == 2, "the first hub visit credits streak day 1")
+	streak.on_hub_visit()
+	_check(streak.coins == 10, "the same UTC day does not credit the streak again")
+	for step in 6:
+		streak.test_utc_day = 201 + step
+		streak.on_hub_visit()
+	_check(streak.freeze_tokens == 1 and streak.streak_next == 1, "day 7 grants one freeze token and the next step is day 1")
+	var before_cycle: int = streak.coins
+	streak.test_utc_day = 207
+	streak.on_hub_visit()
+	_check(streak.coins == before_cycle + 10 and streak.freeze_tokens == 1 and streak.streak_next == 2, "the day after day 7 starts a new day 1 and stays at one token")
+	for step in 6:
+		streak.test_utc_day = 208 + step
+		streak.on_hub_visit()
+	_check(streak.freeze_tokens == 1, "completing day 7 again does not raise the token above 1")
+	var missed = ProgressScript.new()
+	missed.test_utc_day = 10
+	missed.on_hub_visit()
+	missed.test_utc_day = 11
+	missed.on_hub_visit()
+	missed.test_utc_day = 12
+	missed.on_hub_visit()
+	var missed_coins: int = missed.coins
+	missed.test_utc_day = 14
+	missed.on_hub_visit()
+	_check(missed.freeze_tokens == 0 and missed.streak_next == 2 and missed.coins == missed_coins + 10, "one missed day without a token restarts at day 1")
+	var kept = ProgressScript.new()
+	kept.test_utc_day = 10
+	kept.on_hub_visit()
+	kept.test_utc_day = 11
+	kept.on_hub_visit()
+	kept.test_utc_day = 12
+	kept.on_hub_visit()
+	kept.freeze_tokens = 1
+	var kept_coins: int = kept.coins
+	kept.test_utc_day = 14
+	kept.on_hub_visit()
+	_check(kept.freeze_tokens == 0 and kept.streak_next == 5 and kept.coins == kept_coins + 15, "one missed day spends the token and continues the next step")
+	var wide = ProgressScript.new()
+	wide.test_utc_day = 10
+	wide.on_hub_visit()
+	wide.test_utc_day = 11
+	wide.on_hub_visit()
+	wide.test_utc_day = 12
+	wide.on_hub_visit()
+	wide.freeze_tokens = 1
+	var wide_coins: int = wide.coins
+	wide.test_utc_day = 15
+	wide.on_hub_visit()
+	_check(wide.freeze_tokens == 1 and wide.streak_next == 2 and wide.coins == wide_coins + 10, "two missed days reset to day 1 and keep the token")
+	var back = ProgressScript.new()
+	back.test_utc_day = 50
+	back.best_stars = {"5": 3}
+	back.on_hub_visit()
+	var paid: Dictionary = back.record_daily_clear()
+	var back_coins: int = back.coins
+	_check(bool(paid["paid"]), "daily can pay on the observed day")
+	back.test_utc_day = 40
+	back.on_hub_visit()
+	var denied: Dictionary = back.record_daily_clear()
+	_check(back.coins == back_coins and not bool(denied["paid"]) and back.highest_utc_day == 50 and back.streak_last_day == 50, "a backward clock creates no new claim")
+	var puzzle = PuzzleScript.new()
+	puzzle.setup(level1)
+	_check(puzzle.permanent_slots == 1, "a fresh puzzle has one hold for the solver")
+	puzzle.permanent_slots = 2
+	var parked: String = puzzle.move_column_to_hold(0, 1)
+	_check(parked == "" and puzzle.hold2 != "" and puzzle.hold == "" and not puzzle.temp_slot_used, "the second hold parks a container and is not a temporary slot")
+	_check(puzzle.undo() and puzzle.hold2 == "" and puzzle.hold == "", "undo restores the second hold")
+	puzzle.permanent_slots = 2
+	puzzle.move_column_to_hold(0, 1)
+	_check(ProgressScript.stars_for(puzzle.undos_used, puzzle.undo_limit, puzzle.temp_slot_used) == 3, "using the permanent second hold still scores 3 stars")
+	puzzle.setup(level1)
+	_check(puzzle.hold == "" and puzzle.hold2 == "" and puzzle.permanent_slots == 1, "restart clears both holds")
+	var wide_hold = PuzzleScript.new()
+	wide_hold.setup(level3)
+	wide_hold.permanent_slots = 2
+	for move in _level2_fail():
+		wide_hold.apply_move(move)
+	_check(not wide_hold.is_soft_fail(), "an empty second permanent hold is still a legal move")
+	for path in ["user://m4_daily.cfg", "user://m4_hold.cfg", "user://m4_legacy.cfg", "user://m4_streak.cfg"]:
+		if FileAccess.file_exists(path):
+			DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
 
 
 func _check(cond: bool, message: String) -> void:

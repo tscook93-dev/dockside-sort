@@ -19,6 +19,9 @@ var columns: Array = []
 var locks: Array = []
 var berths: Array = []
 var hold := ""
+## Second permanent hold. Stays empty unless permanent_slots is 2. Not a temporary assist.
+var hold2 := ""
+var permanent_slots := 1
 var history: Array = []
 var moves_done := 0
 var undos_used := 0
@@ -81,6 +84,8 @@ func setup(data: Dictionary) -> void:
 		locks.append(str(entry))
 		berths.append([])
 	hold = ""
+	hold2 = ""
+	permanent_slots = 1
 	history = []
 	moves_done = 0
 	undos_used = 0
@@ -152,16 +157,26 @@ func move_column_to_berth(col: int, berth: int) -> String:
 	moves_done += 1
 	return ""
 
-func move_column_to_hold(col: int) -> String:
+func hold_color(slot: int) -> String:
+	return hold2 if slot == 1 else hold
+
+
+func move_column_to_hold(col: int, slot: int = 0) -> String:
 	var token := _column_top(col)
 	var blocked := _blocked_reason(token)
 	if blocked != "":
 		return blocked
-	if hold != "":
-		return "The hold already has a container."
+	if slot == 1 and permanent_slots < 2:
+		return "The second hold is not open."
+	if hold_color(slot) != "":
+		return "That hold already has a container."
 	_push_history()
 	(columns[col] as Array).pop_front()
-	hold = cargo_color(token)
+	var color := cargo_color(token)
+	if slot == 1:
+		hold2 = color
+	else:
+		hold = color
 	last_shipped = ""
 	moves_done += 1
 	return ""
@@ -175,14 +190,17 @@ func collect_key(col: int) -> String:
 	moves_done += 1
 	return ""
 
-func move_hold_to_berth(berth: int) -> String:
-	if hold == "":
+func move_hold_to_berth(berth: int, slot: int = 0) -> String:
+	var color := hold_color(slot)
+	if color == "":
 		return "The hold is empty."
-	if not can_accept(hold, berth):
-		return reject_reason(hold, berth)
-	var color := hold
+	if not can_accept(color, berth):
+		return reject_reason(color, berth)
 	_push_history()
-	hold = ""
+	if slot == 1:
+		hold2 = ""
+	else:
+		hold = ""
 	(berths[berth] as Array).append(color)
 	_ship_if_full(berth)
 	moves_done += 1
@@ -197,7 +215,7 @@ func undo() -> bool:
 	return true
 
 func is_win() -> bool:
-	if hold != "":
+	if hold != "" or hold2 != "":
 		return false
 	for col in columns:
 		if not (col as Array).is_empty():
@@ -228,11 +246,17 @@ func legal_moves(allow_hold: bool = true) -> Array:
 			if can_accept(color, j):
 				out.append({"op": "deck_berth", "col": i, "berth": j})
 		if allow_hold and hold == "":
-			out.append({"op": "deck_hold", "col": i})
+			out.append({"op": "deck_hold", "col": i, "slot": 0})
+		if allow_hold and permanent_slots >= 2 and hold2 == "":
+			out.append({"op": "deck_hold", "col": i, "slot": 1})
 	if allow_hold and hold != "":
 		for j in berths.size():
 			if can_accept(hold, j):
-				out.append({"op": "hold_berth", "berth": j})
+				out.append({"op": "hold_berth", "berth": j, "slot": 0})
+	if allow_hold and hold2 != "":
+		for j in berths.size():
+			if can_accept(hold2, j):
+				out.append({"op": "hold_berth", "berth": j, "slot": 1})
 	return out
 
 func apply_move(move: Dictionary) -> String:
@@ -240,9 +264,9 @@ func apply_move(move: Dictionary) -> String:
 		"deck_berth":
 			return move_column_to_berth(int(move["col"]), int(move["berth"]))
 		"deck_hold":
-			return move_column_to_hold(int(move["col"]))
+			return move_column_to_hold(int(move["col"]), int(move.get("slot", 0)))
 		"hold_berth":
-			return move_hold_to_berth(int(move["berth"]))
+			return move_hold_to_berth(int(move["berth"]), int(move.get("slot", 0)))
 		"collect":
 			return collect_key(int(move["col"]))
 	return "Unknown move."
@@ -258,6 +282,8 @@ func state_key() -> String:
 		parts.append("/")
 	parts.append("~")
 	parts.append(hold)
+	parts.append("|")
+	parts.append(hold2)
 	return "".join(parts)
 
 func snapshot() -> Dictionary:
@@ -265,6 +291,7 @@ func snapshot() -> Dictionary:
 		"columns": _clone(columns),
 		"berths": _clone(berths),
 		"hold": hold,
+		"hold2": hold2,
 		"moves_done": moves_done,
 	}
 
@@ -323,6 +350,7 @@ func _restore_snap(snap: Dictionary) -> void:
 	columns = _clone(snap["columns"])
 	berths = _clone(snap["berths"])
 	hold = str(snap["hold"])
+	hold2 = str(snap.get("hold2", ""))
 	moves_done = int(snap["moves_done"])
 	last_shipped = ""
 

@@ -4,6 +4,7 @@ const PuzzleScript := preload("res://scripts/puzzle.gd")
 const ProgressScript := preload("res://scripts/progress.gd")
 const Glyph := preload("res://scripts/glyph_button.gd")
 const Berth := preload("res://scripts/berth_button.gd")
+const SydneyView := preload("res://scripts/sydney_view.gd")
 
 const HARBOUR := Color("1b3a4b")
 const CREAM := Color("f6efe2")
@@ -43,6 +44,8 @@ var moves_label: Label
 var deck_row: HBoxContainer
 var stack_row: HBoxContainer
 var hold_button
+var hold_button2
+var playing_daily := false
 var column_cells: Array = []
 var berth_buttons: Array = []
 
@@ -60,8 +63,14 @@ var coach_step := 0
 
 var screens: Control
 var play_root: Control
+var hub_root: Control
 var home_root: Control
 var settings_root: Control
+var hub_coins: Label
+var hub_note: Label
+var upgrade_button: Button
+var daily_button: Button
+var _settings_return := "hub"
 var home_list: VBoxContainer
 var home_scroll: ScrollContainer
 var home_coins: Label
@@ -80,7 +89,7 @@ func _ready() -> void:
 		var data: Dictionary = PuzzleScript.load_level(path)
 		if not data.is_empty():
 			levels.append(data)
-	_show_home()
+	_show_hub()
 	resized.connect(_apply_safe_margins)
 	_apply_safe_margins()
 
@@ -96,38 +105,50 @@ func _unhandled_input(event: InputEvent) -> void:
 	var key := (event as InputEventKey).keycode
 	if settings_root != null and settings_root.visible:
 		if key == KEY_ESCAPE or key == KEY_B:
-			_show_home()
+			_leave_settings()
 		elif key == KEY_M:
 			_toggle_sound()
 		elif key == KEY_N:
 			_toggle_haptics()
+		return
+	if hub_root != null and hub_root.visible:
+		if key == KEY_ENTER or key == KEY_KP_ENTER or key == KEY_SPACE or key == KEY_1:
+			_play_frontier()
+		elif key == KEY_S:
+			_show_settings()
+		elif key == KEY_L or key == KEY_2:
+			_show_ships()
 		return
 	if home_root != null and home_root.visible:
 		if key >= KEY_1 and key <= KEY_9:
 			_start_level(key - KEY_1)
 		elif key == KEY_S:
 			_show_settings()
+		elif key == KEY_ESCAPE or key == KEY_B:
+			_show_hub()
 		return
 	if modal != null and modal.visible:
 		if key == KEY_ENTER or key == KEY_KP_ENTER or key == KEY_SPACE:
 			_on_primary()
 		elif key == KEY_L:
-			_show_home()
+			_show_hub()
 		elif key == KEY_ESCAPE and modal_mode == "fail":
 			_undo()
 		elif key == KEY_ESCAPE and modal_mode == "win":
-			_show_home()
+			_show_hub()
 		return
 	if coach != null and coach.visible and key == KEY_S:
 		_finish_coach()
 		return
 	if key == KEY_ESCAPE or key == KEY_L:
-		_show_home()
+		_show_hub()
 		return
 	if key >= KEY_1 and key <= KEY_9:
 		_select_column(key - KEY_1)
 	elif key == KEY_H:
-		_on_hold()
+		_on_hold(0)
+	elif key == KEY_J:
+		_on_hold(1)
 	elif key == KEY_Q:
 		_on_berth(0)
 	elif key == KEY_W:
@@ -149,7 +170,11 @@ func _load_current(announce := "") -> void:
 	sel_index = -1
 	puzzle = PuzzleScript.new()
 	puzzle.setup(levels[level_index])
-	level_label.text = "Level %d of %d" % [level_index + 1, levels.size()]
+	if progress.second_hold:
+		puzzle.permanent_slots = 2
+	if hold_button2 != null:
+		hold_button2.visible = puzzle.permanent_slots >= 2
+	level_label.text = "Daily dock" if playing_daily else "Level %d of %d" % [level_index + 1, levels.size()]
 	title_label.text = puzzle.title
 	blurb_label.text = puzzle.blurb
 	_rebuild_board()
@@ -221,7 +246,7 @@ func _on_berth(berth: int) -> void:
 	if sel_kind == "column":
 		err = puzzle.move_column_to_berth(sel_index, berth)
 	elif sel_kind == "hold":
-		err = puzzle.move_hold_to_berth(berth)
+		err = puzzle.move_hold_to_berth(berth, sel_index)
 	if err != "":
 		_set_status(err)
 		return
@@ -231,11 +256,13 @@ func _on_berth(berth: int) -> void:
 	_note_coach("stack")
 
 
-func _on_hold() -> void:
+func _on_hold(slot: int = 0) -> void:
 	if _modal_blocking() or puzzle == null:
 		return
+	if slot == 1 and puzzle.permanent_slots < 2:
+		return
 	if sel_kind == "column":
-		var err: String = puzzle.move_column_to_hold(sel_index)
+		var err: String = puzzle.move_column_to_hold(sel_index, slot)
 		if err != "":
 			_set_status(err)
 			return
@@ -244,17 +271,18 @@ func _on_hold() -> void:
 		_after_successful_move("in the hold")
 		_note_coach("hold")
 		return
-	if puzzle.hold == "":
+	var parked: String = puzzle.hold_color(slot)
+	if parked == "":
 		_set_status("Select a container, then tap the hold.")
 		return
-	if sel_kind == "hold":
+	if sel_kind == "hold" and sel_index == slot:
 		sel_kind = ""
 		sel_index = -1
 		_set_status("Selection cleared.")
 	else:
 		sel_kind = "hold"
-		sel_index = -1
-		_set_status("%s in the hold. Tap a stack." % puzzle.pretty(puzzle.hold))
+		sel_index = slot
+		_set_status("%s in the hold. Tap a stack." % puzzle.pretty(parked))
 	_refresh()
 
 
@@ -271,7 +299,12 @@ func _after_successful_move(how := "stacked") -> void:
 	if puzzle.last_shipped != "" and progress.haptics_on and Input.has_method("vibrate_handheld"):
 		Input.vibrate_handheld(40)
 	if puzzle.is_win():
-		last_clear = progress.record_clear(level_index, int(puzzle.id), levels.size(), puzzle.undos_used, puzzle.undo_limit, puzzle.temp_slot_used)
+		if playing_daily:
+			last_clear = progress.record_daily_clear()
+			last_clear["daily"] = true
+		else:
+			last_clear = progress.record_clear(level_index, int(puzzle.id), levels.size(), puzzle.undos_used, puzzle.undo_limit, puzzle.temp_slot_used)
+			last_clear["daily"] = false
 		_show_modal("win")
 	elif puzzle.is_soft_fail():
 		_show_modal("fail")
@@ -300,8 +333,9 @@ func _restart() -> void:
 
 func _next_level() -> void:
 	var nxt := level_index + 1
-	if nxt >= levels.size():
-		_show_home()
+	if playing_daily or nxt >= levels.size():
+		playing_daily = false
+		_show_hub()
 		return
 	_start_level(nxt)
 
@@ -320,24 +354,31 @@ func _on_secondary() -> void:
 func _show_modal(mode: String) -> void:
 	modal_mode = mode
 	if mode == "win":
-		var stars := int(last_clear.get("stars", 1))
 		var gained := int(last_clear.get("coins", 0))
 		var balance := int(last_clear.get("balance", progress.coins))
-		modal_title.text = "Deck clear"
-		_paint_stars(stars)
-		modal_body.text = "%d stars\nUndos %d (3-star limit %d)\n+%d coins\nBalance %d" % [stars, puzzle.undos_used, puzzle.undo_limit, gained, balance]
-		primary_button.text = "Level list" if level_index >= levels.size() - 1 else "Next level"
-		secondary_button.text = "Replay"
+		if bool(last_clear.get("daily", false)):
+			modal_title.text = "Daily dock clear"
+			_paint_stars(0)
+			modal_body.text = "+%d coins\nBalance %d\nMain stars and unlocks stay as they were.\nDays change at 00:00 UTC." % [gained, balance]
+			primary_button.text = "Port"
+			secondary_button.text = "Replay"
+		else:
+			var stars := int(last_clear.get("stars", 1))
+			modal_title.text = "Deck clear"
+			_paint_stars(stars)
+			modal_body.text = "%d stars\nUndos %d (3-star limit %d)\n+%d coins\nBalance %d" % [stars, puzzle.undos_used, puzzle.undo_limit, gained, balance]
+			primary_button.text = "Port" if level_index >= levels.size() - 1 else "Next level"
+			secondary_button.text = "Replay"
 	else:
 		modal_title.text = "No moves left"
 		var stuck := "The hold is full and nothing can stack."
-		if puzzle.hold == "":
+		if puzzle.hold == "" or (puzzle.permanent_slots >= 2 and puzzle.hold2 == ""):
 			stuck = "Nothing left can move."
 		modal_body.text = "%s Undo, or restart for free." % stuck
 		primary_button.text = "Undo"
 		secondary_button.text = "Restart"
 	secondary_button.visible = true
-	star_row.visible = mode == "win"
+	star_row.visible = mode == "win" and not bool(last_clear.get("daily", false))
 	list_button.visible = mode == "win"
 	modal.visible = true
 
@@ -348,17 +389,34 @@ func _paint_stars(filled: int) -> void:
 		pip.color = GOLD if i < filled else Color("c8bfae")
 
 
-func _start_level(index: int) -> void:
-	if index < 0 or index >= levels.size() or not progress.is_unlocked(index):
+func _start_level(index: int, as_daily := false) -> void:
+	if index < 0 or index >= levels.size():
+		return
+	if not as_daily and not progress.is_unlocked(index):
 		return
 	level_index = index
+	playing_daily = as_daily
+	if hub_root != null:
+		hub_root.visible = false
 	home_root.visible = false
 	settings_root.visible = false
 	play_root.visible = true
 	_load_current()
 
 
-func _show_home() -> void:
+func _play_frontier() -> void:
+	var index := 0
+	for i in levels.size():
+		if not progress.is_unlocked(i):
+			break
+		index = i
+		var data: Dictionary = levels[i]
+		if progress.best_for(int(data.get("id", i + 1))) == 0:
+			break
+	_start_level(index)
+
+
+func _show_hub() -> void:
 	if modal != null:
 		modal.visible = false
 	if play_root != null:
@@ -366,11 +424,38 @@ func _show_home() -> void:
 	if settings_root != null:
 		settings_root.visible = false
 	if home_root != null:
+		home_root.visible = false
+	playing_daily = false
+	if hub_root != null:
+		hub_root.visible = true
+	if progress != null:
+		var note := progress.on_hub_visit()
+		if hub_note != null:
+			hub_note.text = note
+	_refresh_hub()
+
+
+func _show_ships() -> void:
+	if modal != null:
+		modal.visible = false
+	if play_root != null:
+		play_root.visible = false
+	if settings_root != null:
+		settings_root.visible = false
+	if hub_root != null:
+		hub_root.visible = false
+	if home_root != null:
 		home_root.visible = true
 	_rebuild_level_list()
 
 
 func _show_settings() -> void:
+	if home_root != null and home_root.visible:
+		_settings_return = "ships"
+	else:
+		_settings_return = "hub"
+	if hub_root != null:
+		hub_root.visible = false
 	home_root.visible = false
 	play_root.visible = false
 	settings_root.visible = true
@@ -398,8 +483,133 @@ func _refresh_settings() -> void:
 	haptics_button.text = "Haptics       %s" % ("On" if progress.haptics_on else "Off")
 
 
+func _leave_settings() -> void:
+	if _settings_return == "ships":
+		_show_ships()
+	else:
+		_show_hub()
+
+
+func _refresh_hub() -> void:
+	if hub_coins != null:
+		hub_coins.text = "Coins %d" % progress.coins
+	if upgrade_button != null:
+		upgrade_button.add_theme_color_override("font_disabled_color", INK)
+		if progress.second_hold:
+			upgrade_button.text = "Second hold owned"
+			upgrade_button.disabled = true
+		elif not progress.upgrade_unlocked:
+			upgrade_button.text = "Second hold\nAfter first clear of level 15"
+			upgrade_button.disabled = true
+		else:
+			upgrade_button.text = "Buy second hold\n300 coins"
+			upgrade_button.disabled = false
+	if daily_button != null:
+		daily_button.add_theme_color_override("font_disabled_color", INK)
+		if not progress.daily_unlocked():
+			daily_button.text = "Daily dock\nAfter clearing level 5"
+			daily_button.disabled = true
+		elif progress.daily_done_today():
+			daily_button.text = "Daily dock · done today\nLevel %d · 00:00 UTC" % progress.daily_level_id()
+			daily_button.disabled = false
+		else:
+			daily_button.text = "Daily dock · Level %d\n30 coins · 00:00 UTC" % progress.daily_level_id()
+			daily_button.disabled = false
+
+
+func _buy_hold() -> void:
+	var before: int = progress.coins
+	var result: Dictionary = progress.buy_second_hold()
+	if not bool(result.get("ok", false)):
+		if str(result.get("reason", "")) == "coins":
+			hub_note.text = "Not enough coins. Nothing was spent. Days change at 00:00 UTC."
+		elif str(result.get("reason", "")) == "owned":
+			hub_note.text = "Second hold is already open."
+		else:
+			hub_note.text = "The second hold opens after the first clear of level 15."
+		if progress.coins != before:
+			hub_note.text = "Purchase did not change the save."
+	else:
+		hub_note.text = "Second hold open. It is permanent and does not change the star rule. Days change at 00:00 UTC."
+	_refresh_hub()
+
+
+func _start_daily() -> void:
+	if not progress.daily_unlocked():
+		return
+	var wanted := progress.daily_level_id()
+	var index := -1
+	for i in levels.size():
+		var data: Dictionary = levels[i]
+		if int(data.get("id", 0)) == wanted:
+			index = i
+			break
+	if index < 0:
+		return
+	_start_level(index, true)
+
+
+func _paint_hold(button, color: String, slot: int) -> void:
+	if button == null:
+		return
+	if color == "":
+		button.clear_face(Color("f7f1e4"))
+		button.tooltip_text = "Hold %d — empty" % (slot + 1)
+	else:
+		button.show_cargo(PALETTE[color], GLYPHS[color])
+		button.tooltip_text = "Hold %d — %s" % [slot + 1, puzzle.pretty(color)]
+	button.set_selected(sel_kind == "hold" and sel_index == slot)
+
+
 func _placeholder_row(_which: String) -> void:
 	settings_note.text = "Not in this build."
+
+
+func _build_hub() -> void:
+	hub_root = VBoxContainer.new()
+	hub_root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	hub_root.add_theme_constant_override("separation", 12)
+	screens.add_child(hub_root)
+	var top := HBoxContainer.new()
+	top.add_theme_constant_override("separation", 12)
+	var title := _label("SYDNEY", 28, GOLD)
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var settings_button := _action_button("Settings", Color("d7e4ea"), INK)
+	settings_button.custom_minimum_size = Vector2(180, 72)
+	settings_button.add_theme_font_size_override("font_size", 24)
+	settings_button.pressed.connect(_show_settings)
+	top.add_child(title)
+	top.add_child(settings_button)
+	hub_root.add_child(top)
+	hub_coins = _label("Coins 0", 32, CREAM)
+	hub_root.add_child(hub_coins)
+	var yard := SydneyView.new()
+	yard.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	yard.custom_minimum_size = Vector2(0, 220)
+	yard.clip_contents = true
+	hub_root.add_child(yard)
+	var play := _action_button("Play", GOLD, INK)
+	play.custom_minimum_size = Vector2(0, 84)
+	play.pressed.connect(_play_frontier)
+	hub_root.add_child(play)
+	var ships := _action_button("Ships", CREAM, INK)
+	ships.custom_minimum_size = Vector2(0, 72)
+	ships.pressed.connect(_show_ships)
+	hub_root.add_child(ships)
+	upgrade_button = _action_button("Second hold", CREAM, INK)
+	upgrade_button.custom_minimum_size = Vector2(0, 72)
+	upgrade_button.add_theme_font_size_override("font_size", 22)
+	upgrade_button.pressed.connect(_buy_hold)
+	hub_root.add_child(upgrade_button)
+	daily_button = _action_button("Daily dock", Color("d7e4ea"), INK)
+	daily_button.custom_minimum_size = Vector2(0, 72)
+	daily_button.add_theme_font_size_override("font_size", 22)
+	daily_button.pressed.connect(_start_daily)
+	hub_root.add_child(daily_button)
+	hub_note = _label("Days change at 00:00 UTC.", 20, CREAM)
+	hub_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	hub_root.add_child(hub_note)
+	_refresh_hub()
 
 
 func _build_home() -> void:
@@ -409,13 +619,18 @@ func _build_home() -> void:
 	screens.add_child(home_root)
 	var top := HBoxContainer.new()
 	top.add_theme_constant_override("separation", 12)
-	var title := _label("DOCKSIDE SORT", 22, GOLD)
+	var title := _label("SHIPS", 22, GOLD)
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var port_button := _action_button("Port", GOLD, INK)
+	port_button.custom_minimum_size = Vector2(140, 72)
+	port_button.add_theme_font_size_override("font_size", 24)
+	port_button.pressed.connect(_show_hub)
 	var settings_button := _action_button("Settings", Color("d7e4ea"), INK)
 	settings_button.custom_minimum_size = Vector2(180, 72)
 	settings_button.add_theme_font_size_override("font_size", 24)
 	settings_button.pressed.connect(_show_settings)
 	top.add_child(title)
+	top.add_child(port_button)
 	top.add_child(settings_button)
 	home_root.add_child(top)
 	home_coins = _label("Coins 0", 36, CREAM)
@@ -526,7 +741,7 @@ func _build_settings() -> void:
 	settings_root.add_child(settings_note)
 	var back := _action_button("Back", GOLD, INK)
 	back.custom_minimum_size = Vector2(0, 84)
-	back.pressed.connect(_show_home)
+	back.pressed.connect(_leave_settings)
 	settings_root.add_child(back)
 	_refresh_settings()
 
@@ -660,13 +875,11 @@ func _refresh() -> void:
 		var berth = berth_buttons[b]
 		berth.set_state(str(puzzle.locks[b]), puzzle.berths[b], puzzle.capacity, PALETTE, GLYPHS)
 		berth.set_selected(false)
-	if puzzle.hold == "":
-		hold_button.clear_face(Color("f7f1e4"))
-		hold_button.tooltip_text = "Hold — empty"
-	else:
-		hold_button.show_cargo(PALETTE[puzzle.hold], GLYPHS[puzzle.hold])
-		hold_button.tooltip_text = "Hold — %s" % puzzle.pretty(puzzle.hold)
-	hold_button.set_selected(sel_kind == "hold")
+	_paint_hold(hold_button, puzzle.hold, 0)
+	if hold_button2 != null:
+		hold_button2.visible = puzzle.permanent_slots >= 2
+		if puzzle.permanent_slots >= 2:
+			_paint_hold(hold_button2, puzzle.hold2, 1)
 
 
 func _rebuild_board() -> void:
@@ -744,10 +957,10 @@ func _build_chrome() -> void:
 	kicker_row.add_theme_constant_override("separation", 12)
 	var kicker := _label("DOCKSIDE SORT", 18, GOLD)
 	kicker.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	var levels_button := _action_button("Levels", Color("d7e4ea"), INK)
+	var levels_button := _action_button("Port", Color("d7e4ea"), INK)
 	levels_button.custom_minimum_size = Vector2(140, 64)
 	levels_button.add_theme_font_size_override("font_size", 22)
-	levels_button.pressed.connect(_show_home)
+	levels_button.pressed.connect(_show_hub)
 	kicker_row.add_child(kicker)
 	kicker_row.add_child(levels_button)
 	root_box.add_child(kicker_row)
@@ -802,17 +1015,27 @@ func _build_chrome() -> void:
 	hold_wrap.add_theme_constant_override("separation", 4)
 	var hold_caption := _label("HOLD", 20, GOLD)
 	hold_caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	var hold_row := HBoxContainer.new()
+	hold_row.add_theme_constant_override("separation", 8)
 	hold_button = Glyph.new()
-	hold_button.custom_minimum_size = Vector2(132, 132)
+	hold_button.custom_minimum_size = Vector2(120, 120)
 	hold_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	hold_button.pressed.connect(_on_hold)
+	hold_button.pressed.connect(_on_hold.bind(0))
+	hold_button2 = Glyph.new()
+	hold_button2.custom_minimum_size = Vector2(120, 120)
+	hold_button2.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	hold_button2.visible = false
+	hold_button2.pressed.connect(_on_hold.bind(1))
+	hold_row.add_child(hold_button)
+	hold_row.add_child(hold_button2)
 	hold_wrap.add_child(hold_caption)
-	hold_wrap.add_child(hold_button)
+	hold_wrap.add_child(hold_row)
 	bottom.add_child(hold_wrap)
 
 	bottom.add_child(_bottom_action("Undo", GOLD, INK, _undo))
 	bottom.add_child(_bottom_action("Restart", Color("d7e4ea"), INK, _restart))
 
+	_build_hub()
 	_build_home()
 	_build_settings()
 	_build_modal()
@@ -873,10 +1096,10 @@ func _build_modal() -> void:
 	row.add_child(primary_button)
 	row.add_child(secondary_button)
 	box.add_child(row)
-	list_button = _action_button("Level list", Color("d7e4ea"), INK)
+	list_button = _action_button("Port", Color("d7e4ea"), INK)
 	list_button.custom_minimum_size = Vector2(460, 72)
 	list_button.add_theme_font_size_override("font_size", 24)
-	list_button.pressed.connect(_show_home)
+	list_button.pressed.connect(_show_hub)
 	box.add_child(list_button)
 
 
