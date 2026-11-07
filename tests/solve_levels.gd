@@ -5,8 +5,8 @@ const PuzzleScript := preload("res://scripts/puzzle.gd")
 
 func _init() -> void:
 	var paths := PuzzleScript.list_level_paths()
-	if paths.size() != 17:
-		print("EXPECTED 17 LEVELS, got ", paths.size())
+	if paths.size() != 30:
+		print("EXPECTED 30 LEVELS, got ", paths.size())
 		quit(1)
 		return
 	var failed := 0
@@ -30,15 +30,21 @@ func _init() -> void:
 		print("SOLVER FAILED: %d" % failed)
 		quit(1)
 	else:
-		print("ALL 17 LEVELS SOLVABLE")
+		print("ALL 30 LEVELS SOLVABLE")
 		quit(0)
 
 
 func _check_shape(data: Dictionary) -> String:
 	var id := int(data.get("id", 0))
 	var capacity := int(data.get("capacity", 0))
-	if id >= 1 and id <= 17 and capacity != 3:
-		return "capacity %d, want 3" % capacity
+	if id >= 1 and id <= 19 and capacity != 3:
+		return "capacity %d, levels 1-19 use 3" % capacity
+	if id >= 20 and capacity != 3 and capacity != 4:
+		return "capacity %d, levels 20+ use 3 or 4" % capacity
+	if id == 8 or id == 13:
+		for berth in data.get("berths", []):
+			if str(berth) != "":
+				return "levels 8 and 13 use open stacks"
 	var counts := {}
 	var keys := 0
 	var locked := 0

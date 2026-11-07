@@ -1,0 +1,39 @@
+{
+  "id": 28,
+  "title": "Indigo Pile",
+  "blurb": "Indigo on a two-high pile, with the other three colours.",
+  "undo_limit": 1,
+  "capacity": 3,
+  "berths": [
+    "",
+    "",
+    ""
+  ],
+  "columns": [
+    [
+      "indigo",
+      "coral"
+    ],
+    [
+      "teal",
+      "gold",
+      "indigo"
+    ],
+    [
+      "coral",
+      "teal",
+      "teal"
+    ],
+    [
+      "indigo",
+      "gold",
+      "coral"
+    ],
+    [
+      "gold"
+    ]
+  ],
+  "double_high": [
+    0
+  ]
+}

@@ -1,0 +1,32 @@
+{
+  "id": 23,
+  "title": "Key Under",
+  "blurb": "Clear the container sitting on the key.",
+  "undo_limit": 1,
+  "capacity": 3,
+  "berths": [
+    "",
+    "",
+    ""
+  ],
+  "columns": [
+    [
+      "coral",
+      "key",
+      "teal"
+    ],
+    [
+      "locked:gold",
+      "gold",
+      "gold"
+    ],
+    [
+      "teal",
+      "teal",
+      "coral"
+    ],
+    [
+      "coral"
+    ]
+  ]
+}

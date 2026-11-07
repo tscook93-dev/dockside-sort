@@ -1,0 +1,32 @@
+{
+  "id": 20,
+  "title": "Wider Stacks",
+  "blurb": "Stacks hold four on this ship.",
+  "undo_limit": 2,
+  "capacity": 4,
+  "berths": [
+    "",
+    "",
+    ""
+  ],
+  "columns": [
+    [
+      "coral",
+      "coral",
+      "teal",
+      "coral"
+    ],
+    [
+      "teal",
+      "teal",
+      "gold",
+      "teal"
+    ],
+    [
+      "gold",
+      "gold",
+      "coral",
+      "gold"
+    ]
+  ]
+}

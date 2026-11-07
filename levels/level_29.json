@@ -1,0 +1,40 @@
+{
+  "id": 29,
+  "title": "Locked Indigo",
+  "blurb": "The locked indigo sits under another container. The key is buried.",
+  "undo_limit": 1,
+  "capacity": 3,
+  "berths": [
+    "",
+    "",
+    ""
+  ],
+  "columns": [
+    [
+      "coral",
+      "locked:indigo"
+    ],
+    [
+      "teal",
+      "key",
+      "teal"
+    ],
+    [
+      "indigo",
+      "indigo",
+      "gold"
+    ],
+    [
+      "coral",
+      "coral",
+      "gold"
+    ],
+    [
+      "teal",
+      "gold"
+    ]
+  ],
+  "double_high": [
+    0
+  ]
+}

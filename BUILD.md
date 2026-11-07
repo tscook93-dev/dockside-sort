@@ -61,7 +61,7 @@ Workflow artifacts are also uploaded, as a fallback that does require a GitHub l
 
 Tap the bright top container of a column, then tap a stack or the hold. A stack only takes its own colour. On level 1 the three stacks are pinned (Coral, Teal, Gold). On levels 2 and 3 an empty stack accepts any colour, and it ships when it holds 3 of that colour. Undo and Restart are free.
 
-The game opens on the ship list. Desktop keys: `1` `2` `3` start an unlocked level, `S` opens settings. On a level, `1` `2` `3` select columns, `Q` `W` `E` place on stacks, `H` hold, `U` undo, `R` restart, `L` returns to the list, Space confirms the prompt.
+The game opens on the ship list. All 30 ships are on that list. A locked row stays locked until the ship before it is cleared, and an existing save is kept. Drag the list to move it. Desktop keys: `1` `2` `3` start an unlocked level, `S` opens settings. On a level, `1` `2` `3` select columns, `Q` `W` `E` place on stacks, `H` hold, `U` undo, `R` restart, `L` returns to the list, Space confirms the prompt.
 
 ## Levels
 
@@ -92,8 +92,8 @@ Colours: `coral` circle, `teal` square, `gold` triangle, `indigo` diamond.
 
 - [x] M1 Core sort mechanic (greybox; deck grid, colour stacks, 1 hold slot, undo, win, soft fail + free restart, 2-3 hand-made test levels) — done, pending Tobias's merge of #1
 - [x] M2 Level flow (level progression, 3-star scoring, coin payout, local save, restart, settings shell) — done, pending Tobias's merge of #2
-- [ ] M3a First levels, part 1 (levels 1–17, FTUE, locked container + key, 4th colour, double-high; solver proves each is solvable with 1 hold and no undos) — in progress
-- [ ] M3b First levels, part 2 (levels 18–30: conveyor, fragile glass, colour gate, boss mix)
+- [x] M3a First levels, part 1 (levels 1–17, FTUE, locked container + key, 4th colour, double-high; readability fixes on #3) — done, pending Tobias's merge of #3
+- [ ] M3b Levels 18–30 with the mechanics already in the game (no conveyor, glass, or colour gate) — in progress
 - [ ] M4 Art pass (chunky 2.5D, port yard hub chapter 1, daily dock challenge + login streak)
 - [ ] M5 Monetisation hooks (rewarded, interstitial rules, No Forced Ads, coin packs S/M/L; test/sandbox IDs only)
 - [ ] M6 Analytics (the brief's event list behind one thin wrapper; debug sink first)
@@ -111,7 +111,7 @@ The brief groups the same work as three milestones (playable prototype, content-
 6. **Input.** Tap, then tap, is the primary input. Drag comes later and is not built.
 7. **Stars.** The current star rule stands. 3 stars means at most `undo_limit` undos and no temporary slot. 2 stars is a light assist (up to two undos past that limit, and a temporary slot also caps the clear at 2 stars inside that band). Any other clear is 1 star. 10 coins per star is a tunable constant (`COINS_PER_STAR`).
 8. **Replay coins.** A replay pays 10 coins only for each star that level had not already earned. Replaying a 3-star level pays 0.
-9. **Level schedule.** Use the brief's table. Levels 1–2 colour stacks (FTUE). 3–4 hold. 5–7 practice. 8–10 locked container and key, with a 3-star spike at 10. 11–12 fourth colour. 13–15 double-high. 16–17 locked plus double-high. 18–20 conveyor. 21–23 fragile glass. 24–26 glass plus conveyor. 27–29 colour gate. 30 boss mix. This chooses the brief's lesson order where it differed from the design doc's unlock column.
+9. **Level schedule.** The 1 Nov brief table still describes the intended mechanic intros: 1–2 colour stacks, 3–4 hold, 5–7 practice, 8–10 key, 11–12 fourth colour, 13–15 double-high, 16–17 locked plus double-high, then conveyor, glass, and colour gate. On 7 Nov 2026 Tobias approved a playtest batch that uses only mechanics already implemented for levels 18–30, and defers conveyor, glass, and colour gates until after he plays this build. That amendment covers this batch only. It is not a claim that the original Philippines soft-launch content is complete.
 10. **Chapters.** Sydney is the only chapter for the Philippines soft launch.
 11. **Hold slots.** Level 3 introduces the hold with one slot. A second permanent slot is a later coin upgrade in the port, after about level 15, capped at 2. The temporary +1 slot arrives with monetisation. Every level must be solvable with one hold slot and no assists.
 
@@ -130,7 +130,21 @@ What is still an implementation choice, not a Playtester answer:
 9. **Fourth colour.** `indigo`, drawn as a diamond.
 10. **FTUE.** Levels 1–4 show one short coach line at a time (tap a container, tap a stack, use the hold, use undo). Skip dismisses it, and the save remembers that the level's coach was finished.
 
-Not in this build, on purpose: ads, a second hold, the temporary slot, conveyor, glass, colour gates, accounts, and a shop. Levels 18–30 are M3b.
+## 7 Nov 2026 playtest amendment
+
+Tobias approved the next playtest as levels 18–30 using only rules already in the build: colour stacks, the four colours, key and lock, double-high, one hold, capacity 3, and capacity 4 from level 20. Conveyor, fragile glass, and colour gates are deferred until after that playtest. The solver only checks that a level can be cleared with one hold and no undo. It does not judge whether a layout is fun or the right difficulty.
+
+## Still not in this build
+
+Ads, a second hold, the temporary slot, conveyor, glass, colour gates, accounts, and a shop. No store listing, production SDK, or device sign-off.
+
+## Release gates still open
+
+These are unchanged and not done: playable path smoke-tested on a mid-range Android phone and a recent iPhone, analytics end to end, ads and IAP in the soft-launch rules, crash rate and cold start, store listing and privacy flows, trademark and store-name check. This batch does not close them.
+
+## Workflow
+
+Headless `tests/rules_check.gd` and `tests/solve_levels.gd`, then the existing playtest workflow exports one single-threaded web build and one arm64 debug APK. No extra content framework.
 
 ## Brief versus design doc
 

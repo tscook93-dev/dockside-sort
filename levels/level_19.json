@@ -1,0 +1,32 @@
+{
+  "id": 19,
+  "title": "Key Again",
+  "blurb": "The key is on top. Collect it, then move the locked teal.",
+  "undo_limit": 2,
+  "capacity": 3,
+  "berths": [
+    "",
+    "",
+    ""
+  ],
+  "columns": [
+    [
+      "key",
+      "coral",
+      "coral"
+    ],
+    [
+      "locked:teal",
+      "teal",
+      "teal"
+    ],
+    [
+      "gold",
+      "gold",
+      "gold"
+    ],
+    [
+      "coral"
+    ]
+  ]
+}

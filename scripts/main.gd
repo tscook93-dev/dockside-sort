@@ -63,7 +63,10 @@ var play_root: Control
 var home_root: Control
 var settings_root: Control
 var home_list: VBoxContainer
+var home_scroll: ScrollContainer
 var home_coins: Label
+var _list_press := Vector2(-1, -1)
+var _list_press_scroll := 0
 var settings_note: Label
 var sound_button: Button
 var haptics_button: Button
@@ -114,6 +117,9 @@ func _unhandled_input(event: InputEvent) -> void:
 			_undo()
 		elif key == KEY_ESCAPE and modal_mode == "win":
 			_show_home()
+		return
+	if coach != null and coach.visible and key == KEY_S:
+		_finish_coach()
 		return
 	if key == KEY_ESCAPE or key == KEY_L:
 		_show_home()
@@ -418,9 +424,14 @@ func _build_home() -> void:
 	var scroll := ScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	# A short drag scrolls. A tap, below this distance, still opens the ship.
+	scroll.scroll_deadzone = 20
+	scroll.gui_input.connect(_on_ship_list_input)
 	home_root.add_child(scroll)
+	home_scroll = scroll
 	home_list = VBoxContainer.new()
 	home_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	home_list.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	home_list.add_theme_constant_override("separation", 12)
 	scroll.add_child(home_list)
 
@@ -437,16 +448,54 @@ func _rebuild_level_list() -> void:
 		button.add_theme_font_size_override("font_size", 26)
 		button.alignment = HORIZONTAL_ALIGNMENT_LEFT
 		var title := str(data.get("title", "Level"))
+		# Rows ignore the pointer so a finger drag reaches the scroller.
+		# Taps are handled in _on_ship_list_input.
+		button.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		button.set_meta("level_index", i)
 		if not progress.is_unlocked(i):
 			button.text = "%d   %s\nLocked" % [i + 1, title]
 			button.disabled = true
-			button.modulate = Color(0.55, 0.6, 0.62)
+			button.add_theme_color_override("font_disabled_color", INK)
+			button.add_theme_stylebox_override("disabled", _box(Color("d5dee3"), Color("5c6b73"), 4, 22, 8))
 		else:
 			var stars := progress.best_for(int(data.get("id", i + 1)))
 			var mark := "No stars yet" if stars == 0 else "%d stars" % stars
 			button.text = "%d   %s\n%s" % [i + 1, title, mark]
-			button.pressed.connect(_start_level.bind(i))
 		home_list.add_child(button)
+
+
+func _on_ship_list_input(event: InputEvent) -> void:
+	if home_scroll == null or not (event is InputEventMouseButton):
+		return
+	var mb := event as InputEventMouseButton
+	if mb.button_index != MOUSE_BUTTON_LEFT:
+		return
+	if mb.pressed:
+		_list_press = mb.global_position
+		_list_press_scroll = home_scroll.scroll_vertical
+		return
+	if _list_press.x < 0.0:
+		return
+	var moved := mb.global_position.distance_to(_list_press)
+	var scrolled: int = absi(home_scroll.scroll_vertical - _list_press_scroll)
+	_list_press = Vector2(-1, -1)
+	if moved < 20.0 and scrolled < 8:
+		_activate_ship_at(mb.global_position)
+
+
+func _activate_ship_at(global_pos: Vector2) -> void:
+	if home_list == null:
+		return
+	for child in home_list.get_children():
+		var button := child as Button
+		if button == null or not button.get_global_rect().has_point(global_pos):
+			continue
+		if not button.has_meta("level_index"):
+			return
+		var index := int(button.get_meta("level_index"))
+		if progress.is_unlocked(index):
+			_start_level(index)
+		return
 
 
 func _build_settings() -> void:
