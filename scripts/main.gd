@@ -5,6 +5,7 @@ const ProgressScript := preload("res://scripts/progress.gd")
 const Glyph := preload("res://scripts/glyph_button.gd")
 const Berth := preload("res://scripts/berth_button.gd")
 const SydneyView := preload("res://scripts/sydney_view.gd")
+const OffersScript := preload("res://scripts/offers.gd")
 
 const HARBOUR := Color("1b3a4b")
 const CREAM := Color("f6efe2")
@@ -29,6 +30,15 @@ var levels: Array = []
 var level_index := 0
 var puzzle
 var progress = ProgressScript.new()
+var offers = OffersScript.new()
+var level_token := 0
+var _reward_id := -1
+var _pending_kind := ""
+var _pending_txn := ""
+var _pending_coins := 0
+var _pending_consumable := true
+var _doubled := false
+var double_button: Button
 var last_clear := {}
 var deck_height := 0
 var sel_kind := ""
@@ -45,11 +55,13 @@ var deck_row: HBoxContainer
 var stack_row: HBoxContainer
 var hold_button
 var hold_button2
+var hold_button3
 var playing_daily := false
 var column_cells: Array = []
 var berth_buttons: Array = []
 
 var modal: Control
+var interstitial: Control
 var modal_title: Label
 var modal_body: Label
 var star_row: HBoxContainer
@@ -84,6 +96,7 @@ var haptics_button: Button
 func _ready() -> void:
 	DisplayServer.window_set_title("Dockside Sort: Cargo Puzzle")
 	progress.load_file()
+	_load_offers()
 	_build_chrome()
 	for path in PuzzleScript.list_level_paths():
 		var data: Dictionary = PuzzleScript.load_level(path)
@@ -170,19 +183,30 @@ func _load_current(announce := "") -> void:
 	sel_index = -1
 	puzzle = PuzzleScript.new()
 	puzzle.setup(levels[level_index])
+	var level_id := int(puzzle.id)
+	progress.clear_temp_for_other(level_id, playing_daily)
 	if progress.second_hold:
 		puzzle.permanent_slots = 2
+	if progress.temp_active(level_id, playing_daily):
+		puzzle.extra_slot = true
+		puzzle.temp_slot_used = true
 	if hold_button2 != null:
 		hold_button2.visible = puzzle.permanent_slots >= 2
+	if hold_button3 != null:
+		hold_button3.visible = puzzle.extra_slot
 	level_label.text = "Daily dock" if playing_daily else "Level %d of %d" % [level_index + 1, levels.size()]
 	title_label.text = puzzle.title
 	blurb_label.text = puzzle.blurb
 	_rebuild_board()
 	_begin_coach()
+	var budget := "Free undos left: %d. After that, 50 coins or one simulated reward." % puzzle.free_undos_left
+	var extra := "Extra hold: 100 coins or one simulated reward, for this unfinished ship only. It caps stars at 2."
+	if puzzle.extra_slot:
+		extra = "Extra hold is active for this unfinished ship. Undo will not remove it."
 	if announce == "":
-		_set_status("Tap the top container, then a stack or the hold.")
+		_set_status(budget + " " + extra)
 	else:
-		_set_status(announce)
+		_set_status(announce + " " + budget)
 
 
 func _select_column(col: int) -> void:
@@ -261,6 +285,8 @@ func _on_hold(slot: int = 0) -> void:
 		return
 	if slot == 1 and puzzle.permanent_slots < 2:
 		return
+	if slot == 2 and not puzzle.extra_slot:
+		return
 	if sel_kind == "column":
 		var err: String = puzzle.move_column_to_hold(sel_index, slot)
 		if err != "":
@@ -302,10 +328,17 @@ func _after_successful_move(how := "stacked") -> void:
 		if playing_daily:
 			last_clear = progress.record_daily_clear()
 			last_clear["daily"] = true
+			progress.finish_temp()
+			_show_modal("win")
 		else:
 			last_clear = progress.record_clear(level_index, int(puzzle.id), levels.size(), puzzle.undos_used, puzzle.undo_limit, puzzle.temp_slot_used)
 			last_clear["daily"] = false
-		_show_modal("win")
+			progress.finish_temp()
+			if progress.on_main_clear(int(puzzle.id)):
+				progress.stamp_ad()
+				_show_interstitial()
+			else:
+				_show_modal("win")
 	elif puzzle.is_soft_fail():
 		_show_modal("fail")
 
@@ -315,12 +348,32 @@ func _undo() -> void:
 		return
 	if modal != null and modal.visible and modal_mode == "win":
 		return
-	if not puzzle.undo():
+	if puzzle.history.is_empty():
 		_set_status("Nothing to undo.")
 		return
+	if puzzle.free_undos_left > 0:
+		if not puzzle.undo():
+			_set_status("Nothing to undo.")
+			return
+		puzzle.free_undos_left -= 1
+		_after_undo("Free undo. %d left." % puzzle.free_undos_left)
+		return
+	var before: int = progress.coins
+	if not progress.try_spend(ProgressScript.UNDO_PRICE):
+		_set_status("Not enough coins. Nothing was spent. Use a simulated reward undo, or restart for free.")
+		return
+	if not puzzle.undo():
+		progress.coins = before
+		progress.save_file()
+		_set_status("Nothing to undo.")
+		return
+	_after_undo("Undo for 50 coins. The coins are not refunded.")
+
+
+func _after_undo(note: String) -> void:
 	sel_kind = ""
 	sel_index = -1
-	_set_status("Undid the last move.")
+	_set_status(note)
 	_refresh()
 	_note_coach("undo")
 	if modal != null and modal.visible and not puzzle.is_soft_fail():
@@ -374,9 +427,13 @@ func _show_modal(mode: String) -> void:
 		var stuck := "The hold is full and nothing can stack."
 		if puzzle.hold == "" or (puzzle.permanent_slots >= 2 and puzzle.hold2 == ""):
 			stuck = "Nothing left can move."
-		modal_body.text = "%s Undo, or restart for free." % stuck
+		modal_body.text = "%s Undo and Restart stay free. Rewarded undo, a temporary hold, and coin prices are not approved yet." % stuck
 		primary_button.text = "Undo"
 		secondary_button.text = "Restart"
+	if double_button != null:
+		var can_double := mode == "win" and not bool(last_clear.get("daily", false)) and int(last_clear.get("coins", 0)) > 0 and not _doubled
+		double_button.visible = can_double
+		double_button.disabled = false
 	secondary_button.visible = true
 	star_row.visible = mode == "win" and not bool(last_clear.get("daily", false))
 	list_button.visible = mode == "win"
@@ -396,6 +453,8 @@ func _start_level(index: int, as_daily := false) -> void:
 		return
 	level_index = index
 	playing_daily = as_daily
+	level_token += 1
+	_doubled = false
 	if hub_root != null:
 		hub_root.visible = false
 	home_root.visible = false
@@ -474,6 +533,163 @@ func _toggle_haptics() -> void:
 	progress.haptics_on = not progress.haptics_on
 	progress.save_file()
 	_refresh_settings()
+
+
+func _load_offers() -> void:
+	offers.no_forced_ads = progress.test_no_forced_ads
+	offers.transactions = progress.test_transactions.duplicate()
+
+
+func _store_offers() -> void:
+	progress.test_no_forced_ads = offers.no_forced_ads
+	progress.test_transactions = offers.transactions.duplicate()
+	progress.save_file()
+
+
+func _mark_no_forced_ads() -> void:
+	_pending_kind = "purchase"
+	_pending_txn = "noforced-%d" % (offers.next_id + 1)
+	_pending_coins = 0
+	_pending_consumable = false
+	settings_note.text = "Simulated No forced ads, USD 9.99 / AUD 14.99. Local test, not a checkout. Choose a result."
+
+
+func _arm_pack(sku: String) -> void:
+	var pack: Dictionary = ProgressScript.PACKS[sku]
+	_pending_kind = "purchase"
+	_pending_txn = "pack%s-%d" % [sku, offers.next_id + 1]
+	_pending_coins = int(pack["coins"])
+	_pending_consumable = true
+	settings_note.text = "Simulated pack %s, %d coins, USD %s / AUD %s. Local test, not a checkout. Choose a result." % [sku, _pending_coins, pack["usd"], pack["aud"]]
+
+
+func _arm_reward_undo() -> void:
+	if puzzle == null or puzzle.history.is_empty():
+		_set_status("Nothing to undo.")
+		return
+	var begun: Dictionary = offers.begin_rewarded("undo", level_token)
+	if not bool(begun.get("ok", false)):
+		_set_status("The local test provider is busy. Nothing was spent.")
+		return
+	progress.stamp_ad()
+	_pending_kind = "undo"
+	_reward_id = int(begun.get("id", -1))
+	_set_status("Simulated reward undo is showing. Choose a result in Settings. Cancel spends nothing.")
+
+
+func _buy_temp() -> void:
+	if puzzle == null:
+		return
+	var result: Dictionary = progress.buy_temp(int(puzzle.id), playing_daily)
+	if bool(result.get("ok", false)):
+		puzzle.extra_slot = true
+		puzzle.temp_slot_used = true
+		_set_status("Extra hold is active for this unfinished ship. Undo will not remove it.")
+		_refresh()
+	elif str(result.get("reason", "")) == "active":
+		_set_status("The extra hold is already active. It was not bought again.")
+	else:
+		_set_status("Not enough coins. Nothing was spent.")
+
+
+func _arm_reward_temp() -> void:
+	if puzzle == null:
+		return
+	if progress.temp_active(int(puzzle.id), playing_daily):
+		_set_status("The extra hold is already active.")
+		return
+	var begun: Dictionary = offers.begin_rewarded("temp_hold", level_token)
+	if not bool(begun.get("ok", false)):
+		_set_status("The local test provider is busy. Nothing was spent.")
+		return
+	progress.stamp_ad()
+	_pending_kind = "temp"
+	_reward_id = int(begun.get("id", -1))
+	_set_status("Simulated extra hold. One unfinished level, then it clears. Choose a result in Settings.")
+
+
+func _restore_test_entitlement() -> void:
+	var before: int = progress.coins
+	progress.load_file()
+	_load_offers()
+	var restored: Dictionary = offers.restore()
+	settings_note.text = "Restored the local test entitlement (%s). Coins stayed %d." % ["on" if bool(restored.get("no_forced_ads", false)) else "off", progress.coins]
+	if progress.coins != before or int(restored.get("coins", 0)) != 0:
+		settings_note.text = "Restore tried to change coins."
+
+
+func _start_test_reward() -> void:
+	var begun: Dictionary = offers.begin_rewarded("demo", level_token)
+	if not bool(begun.get("ok", false)):
+		settings_note.text = "The local test provider is busy. No reward was granted."
+		return
+	progress.stamp_ad()
+	_pending_kind = "reward"
+	_reward_id = int(begun.get("id", -1))
+	settings_note.text = "Simulated reward is showing. Local test, not an ad network. Choose one result."
+
+
+func _finish_test_reward(outcome: String) -> void:
+	if _pending_kind == "purchase":
+		var before_purchase: int = progress.coins
+		var bought: Dictionary = offers.purchase(_pending_txn, outcome, _pending_consumable, _pending_coins)
+		if bool(bought.get("ok", false)):
+			progress.coins += int(bought.get("coins", 0))
+			_store_offers()
+			settings_note.text = "Simulated purchase completed once. Coins %d. Local test, not a checkout." % progress.coins
+		else:
+			settings_note.text = "No purchase: %s. Coins stayed %d." % [str(bought.get("reason", "")), progress.coins]
+		if not bool(bought.get("ok", false)) and progress.coins != before_purchase:
+			progress.coins = before_purchase
+			progress.save_file()
+		return
+	if _reward_id < 0:
+		settings_note.text = "Start a local test reward first."
+		return
+	var before: int = progress.coins
+	var result: Dictionary = offers.resolve_rewarded(_reward_id, outcome, level_token)
+	if not bool(result.get("granted", false)):
+		settings_note.text = "No reward: %s." % str(result.get("reason", ""))
+		return
+	if _pending_kind == "undo" and puzzle != null and not puzzle.history.is_empty() and puzzle.undo():
+		_after_undo("Simulated reward undo. Nothing was spent.")
+		settings_note.text = "One undo granted. Coins stayed %d." % progress.coins
+	elif _pending_kind == "temp" and puzzle != null:
+		var granted: Dictionary = progress.grant_temp(int(puzzle.id), playing_daily)
+		if bool(granted.get("ok", false)):
+			puzzle.extra_slot = true
+			puzzle.temp_slot_used = true
+			_refresh()
+		settings_note.text = "Extra hold granted for this unfinished ship. Coins stayed %d." % progress.coins
+	elif _pending_kind == "double" and not playing_daily and not _doubled and int(last_clear.get("coins", 0)) > 0:
+		var bonus: int = int(last_clear.get("coins", 0))
+		progress.coins += bonus
+		_doubled = true
+		progress.save_file()
+		settings_note.text = "Doubled once. +%d coins, matching the clear. Balance %d." % [bonus, progress.coins]
+		if double_button != null:
+			double_button.disabled = true
+			double_button.text = "Doubled once"
+	else:
+		settings_note.text = "Completed once. No coins were added."
+	if _pending_kind != "double" and _pending_kind != "undo" and progress.coins != before and _pending_kind != "temp":
+		progress.coins = before
+		progress.save_file()
+
+
+func _double_clear() -> void:
+	if playing_daily or _doubled or int(last_clear.get("coins", 0)) <= 0:
+		return
+	var begun: Dictionary = offers.begin_rewarded("double_coins", level_token)
+	if not bool(begun.get("ok", false)):
+		return
+	progress.stamp_ad()
+	_pending_kind = "double"
+	_reward_id = int(begun.get("id", -1))
+	var outcomes := modal.find_child("ModalOutcomes", true, false)
+	if outcomes != null:
+		outcomes.visible = true
+	modal_body.text += "\nSimulated double is waiting. The bonus matches this clear only."
 
 
 func _refresh_settings() -> void:
@@ -714,12 +930,23 @@ func _activate_ship_at(global_pos: Vector2) -> void:
 
 
 func _build_settings() -> void:
-	settings_root = VBoxContainer.new()
+	settings_root = Control.new()
 	settings_root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	settings_root.visible = false
-	settings_root.add_theme_constant_override("separation", 12)
 	screens.add_child(settings_root)
-	settings_root.add_child(_label("Settings", 40, CREAM))
+	var scroll := ScrollContainer.new()
+	scroll.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	settings_root.add_child(scroll)
+	var inner := VBoxContainer.new()
+	inner.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	inner.add_theme_constant_override("separation", 12)
+	scroll.add_child(inner)
+	inner.add_child(_label("Settings", 40, CREAM))
+	var top_back := _action_button("Back", GOLD, INK)
+	top_back.custom_minimum_size = Vector2(0, 72)
+	top_back.pressed.connect(_leave_settings)
+	inner.add_child(top_back)
 	sound_button = _action_button("Sound", CREAM, INK)
 	sound_button.custom_minimum_size = Vector2(0, 84)
 	sound_button.alignment = HORIZONTAL_ALIGNMENT_LEFT
@@ -728,21 +955,63 @@ func _build_settings() -> void:
 	haptics_button.custom_minimum_size = Vector2(0, 84)
 	haptics_button.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	haptics_button.pressed.connect(_toggle_haptics)
-	settings_root.add_child(sound_button)
-	settings_root.add_child(haptics_button)
-	for row_name in ["Privacy", "Restore purchases", "Support"]:
+	inner.add_child(sound_button)
+	inner.add_child(haptics_button)
+	for row_name in ["Privacy", "Support"]:
 		var row := _action_button("%s\nNot in this build" % row_name, Color("d7e4ea"), INK)
-		row.custom_minimum_size = Vector2(0, 84)
+		row.custom_minimum_size = Vector2(0, 72)
 		row.alignment = HORIZONTAL_ALIGNMENT_LEFT
 		row.add_theme_font_size_override("font_size", 22)
 		row.pressed.connect(_placeholder_row.bind(row_name))
-		settings_root.add_child(row)
+		inner.add_child(row)
+	inner.add_child(_label("Local test. Not a store.", 22, INK))
+	var ads := _action_button("Simulated No forced ads\nUSD 9.99 / AUD 14.99", CREAM, INK)
+	ads.custom_minimum_size = Vector2(0, 72)
+	ads.add_theme_font_size_override("font_size", 22)
+	ads.pressed.connect(_mark_no_forced_ads)
+	inner.add_child(ads)
+	var restore := _action_button("Restore local test entitlement", Color("d7e4ea"), INK)
+	restore.custom_minimum_size = Vector2(0, 72)
+	restore.add_theme_font_size_override("font_size", 22)
+	restore.pressed.connect(_restore_test_entitlement)
+	inner.add_child(restore)
+	var reward := _action_button("Start local test reward", GOLD, INK)
+	reward.custom_minimum_size = Vector2(0, 72)
+	reward.add_theme_font_size_override("font_size", 22)
+	reward.pressed.connect(_start_test_reward)
+	inner.add_child(reward)
+	var outcomes := VBoxContainer.new()
+	outcomes.add_theme_constant_override("separation", 8)
+	var outcome_names := ["completed", "cancelled", "failed", "unavailable"]
+	for row_i in 2:
+		var outcome_row := HBoxContainer.new()
+		outcome_row.add_theme_constant_override("separation", 8)
+		for col_i in 2:
+			var outcome: String = outcome_names[row_i * 2 + col_i]
+			var choice := _action_button(outcome.substr(0, 1).to_upper() + outcome.substr(1), Color("d7e4ea"), INK)
+			choice.custom_minimum_size = Vector2(0, 64)
+			choice.add_theme_font_size_override("font_size", 20)
+			choice.pressed.connect(_finish_test_reward.bind(outcome))
+			outcome_row.add_child(choice)
+		outcomes.add_child(outcome_row)
+	inner.add_child(outcomes)
+	for sku in ["S", "M", "L"]:
+		var pack: Dictionary = ProgressScript.PACKS[sku]
+		var pack_button := _action_button("Simulated pack %s · %d coins\nUSD %s / AUD %s" % [sku, int(pack["coins"]), pack["usd"], pack["aud"]], Color("d7e4ea"), INK)
+		pack_button.custom_minimum_size = Vector2(0, 72)
+		pack_button.add_theme_font_size_override("font_size", 18)
+		pack_button.pressed.connect(_arm_pack.bind(sku))
+		inner.add_child(pack_button)
+	var cadence_note := _label("Simulated interstitial: every 3rd main clear after level 10, only if 90 seconds have passed since a simulated ad. Not a real ad.", 20, INK)
+	cadence_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	inner.add_child(cadence_note)
 	settings_note = _label("", 22, GOLD)
-	settings_root.add_child(settings_note)
+	settings_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	inner.add_child(settings_note)
 	var back := _action_button("Back", GOLD, INK)
 	back.custom_minimum_size = Vector2(0, 84)
 	back.pressed.connect(_leave_settings)
-	settings_root.add_child(back)
+	inner.add_child(back)
 	_refresh_settings()
 
 
@@ -880,6 +1149,10 @@ func _refresh() -> void:
 		hold_button2.visible = puzzle.permanent_slots >= 2
 		if puzzle.permanent_slots >= 2:
 			_paint_hold(hold_button2, puzzle.hold2, 1)
+	if hold_button3 != null:
+		hold_button3.visible = puzzle.extra_slot
+		if puzzle.extra_slot:
+			_paint_hold(hold_button3, puzzle.hold3, 2)
 
 
 func _rebuild_board() -> void:
@@ -987,6 +1260,24 @@ func _build_chrome() -> void:
 	status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	status_panel.add_child(status_label)
 	root_box.add_child(status_panel)
+	var offer_row := HBoxContainer.new()
+	offer_row.add_theme_constant_override("separation", 8)
+	var reward_undo := _action_button("Reward undo", Color("d7e4ea"), INK)
+	reward_undo.custom_minimum_size = Vector2(0, 64)
+	reward_undo.add_theme_font_size_override("font_size", 18)
+	reward_undo.pressed.connect(_arm_reward_undo)
+	var buy_temp := _action_button("Extra hold 100", GOLD, INK)
+	buy_temp.custom_minimum_size = Vector2(0, 64)
+	buy_temp.add_theme_font_size_override("font_size", 18)
+	buy_temp.pressed.connect(_buy_temp)
+	var reward_temp := _action_button("Reward hold", Color("d7e4ea"), INK)
+	reward_temp.custom_minimum_size = Vector2(0, 64)
+	reward_temp.add_theme_font_size_override("font_size", 18)
+	reward_temp.pressed.connect(_arm_reward_temp)
+	offer_row.add_child(reward_undo)
+	offer_row.add_child(buy_temp)
+	offer_row.add_child(reward_temp)
+	root_box.add_child(offer_row)
 
 	var deck_panel := PanelContainer.new()
 	deck_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -1026,8 +1317,14 @@ func _build_chrome() -> void:
 	hold_button2.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	hold_button2.visible = false
 	hold_button2.pressed.connect(_on_hold.bind(1))
+	hold_button3 = Glyph.new()
+	hold_button3.custom_minimum_size = Vector2(96, 96)
+	hold_button3.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	hold_button3.visible = false
+	hold_button3.pressed.connect(_on_hold.bind(2))
 	hold_row.add_child(hold_button)
 	hold_row.add_child(hold_button2)
+	hold_row.add_child(hold_button3)
 	hold_wrap.add_child(hold_caption)
 	hold_wrap.add_child(hold_row)
 	bottom.add_child(hold_wrap)
@@ -1039,6 +1336,47 @@ func _build_chrome() -> void:
 	_build_home()
 	_build_settings()
 	_build_modal()
+	_build_interstitial()
+
+
+func _build_interstitial() -> void:
+	interstitial = Control.new()
+	interstitial.visible = false
+	interstitial.mouse_filter = Control.MOUSE_FILTER_STOP
+	interstitial.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	add_child(interstitial)
+	var dim := ColorRect.new()
+	dim.color = Color(0.04, 0.07, 0.09, 0.86)
+	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	interstitial.add_child(dim)
+	var label := _label("Simulated interstitial. Local test, not an ad network. It appears before the results, and it is not shown again on this screen.", 28, CREAM)
+	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	label.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	label.offset_left = 36
+	label.offset_top = 280
+	label.offset_right = -36
+	label.offset_bottom = -360
+	interstitial.add_child(label)
+	var dismiss := _action_button("Continue", GOLD, INK)
+	dismiss.custom_minimum_size = Vector2(0, 84)
+	dismiss.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	dismiss.offset_top = -220
+	dismiss.offset_bottom = -120
+	dismiss.offset_left = -180
+	dismiss.offset_right = 180
+	dismiss.pressed.connect(_dismiss_interstitial)
+	interstitial.add_child(dismiss)
+
+
+func _show_interstitial() -> void:
+	if interstitial != null:
+		interstitial.visible = true
+
+
+func _dismiss_interstitial() -> void:
+	if interstitial != null:
+		interstitial.visible = false
+	_show_modal("win")
 
 
 func _build_modal() -> void:
@@ -1096,6 +1434,23 @@ func _build_modal() -> void:
 	row.add_child(primary_button)
 	row.add_child(secondary_button)
 	box.add_child(row)
+	double_button = _action_button("Double this clear\nLocal test", GOLD, INK)
+	double_button.custom_minimum_size = Vector2(460, 72)
+	double_button.add_theme_font_size_override("font_size", 22)
+	double_button.visible = false
+	double_button.pressed.connect(_double_clear)
+	box.add_child(double_button)
+	var modal_outcomes := HBoxContainer.new()
+	modal_outcomes.name = "ModalOutcomes"
+	modal_outcomes.visible = false
+	modal_outcomes.add_theme_constant_override("separation", 8)
+	for outcome_name in ["completed", "cancelled", "failed", "unavailable"]:
+		var modal_choice := _action_button(outcome_name.substr(0, 1).to_upper() + outcome_name.substr(1, 4), Color("d7e4ea"), INK)
+		modal_choice.custom_minimum_size = Vector2(0, 56)
+		modal_choice.add_theme_font_size_override("font_size", 16)
+		modal_choice.pressed.connect(_finish_test_reward.bind(outcome_name))
+		modal_outcomes.add_child(modal_choice)
+	box.add_child(modal_outcomes)
 	list_button = _action_button("Port", Color("d7e4ea"), INK)
 	list_button.custom_minimum_size = Vector2(460, 72)
 	list_button.add_theme_font_size_override("font_size", 24)
