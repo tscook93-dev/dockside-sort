@@ -6,6 +6,7 @@ const Glyph := preload("res://scripts/glyph_button.gd")
 const Berth := preload("res://scripts/berth_button.gd")
 const SydneyView := preload("res://scripts/sydney_view.gd")
 const OffersScript := preload("res://scripts/offers.gd")
+const AnalyticsScript := preload("res://scripts/analytics.gd")
 
 const HARBOUR := Color("1b3a4b")
 const CREAM := Color("f6efe2")
@@ -31,12 +32,16 @@ var level_index := 0
 var puzzle
 var progress = ProgressScript.new()
 var offers = OffersScript.new()
+var analytics = AnalyticsScript.new()
+var level_started_ms := 0
 var level_token := 0
 var _reward_id := -1
 var _pending_kind := ""
 var _pending_txn := ""
 var _pending_coins := 0
 var _pending_consumable := true
+var _pending_sku := ""
+var event_log: Label
 var _doubled := false
 var double_button: Button
 var last_clear := {}
@@ -97,6 +102,14 @@ func _ready() -> void:
 	DisplayServer.window_set_title("Dockside Sort: Cargo Puzzle")
 	progress.load_file()
 	_load_offers()
+	analytics.boot()
+	analytics.track("app_open", {
+		"session_id": analytics.session_id,
+		"app_version": analytics.app_version,
+		"country": "unknown",
+	})
+	if offers.no_forced_ads:
+		analytics.track("no_ads_active", {"active": true})
 	_build_chrome()
 	for path in PuzzleScript.list_level_paths():
 		var data: Dictionary = PuzzleScript.load_level(path)
@@ -194,6 +207,18 @@ func _load_current(announce := "") -> void:
 		hold_button2.visible = puzzle.permanent_slots >= 2
 	if hold_button3 != null:
 		hold_button3.visible = puzzle.extra_slot
+	level_started_ms = int(Time.get_unix_time_from_system() * 1000.0)
+	var attempt_n := analytics.next_attempt(int(puzzle.id))
+	analytics.track("level_start", {
+		"level_id": int(puzzle.id),
+		"attempt_n": attempt_n,
+		"chapter": "sydney",
+	})
+	if playing_daily:
+		analytics.track("daily_challenge", {"date": str(progress.observed_day()), "result": "start"})
+	if not progress.temp_active(int(puzzle.id), playing_daily):
+		analytics.track("assist_offer_shown", {"type": "slot", "source": "coin"}, "slot-coin-%d" % level_token)
+		analytics.track("assist_offer_shown", {"type": "slot", "source": "rewarded"}, "slot-reward-%d" % level_token)
 	level_label.text = "Daily dock" if playing_daily else "Level %d of %d" % [level_index + 1, levels.size()]
 	title_label.text = puzzle.title
 	blurb_label.text = puzzle.blurb
@@ -329,17 +354,34 @@ func _after_successful_move(how := "stacked") -> void:
 			last_clear = progress.record_daily_clear()
 			last_clear["daily"] = true
 			progress.finish_temp()
+			analytics.track("daily_challenge", {
+				"date": str(progress.observed_day()),
+				"result": "clear" if int(last_clear.get("coins", 0)) > 0 else "repeat",
+			})
 			_show_modal("win")
 		else:
 			last_clear = progress.record_clear(level_index, int(puzzle.id), levels.size(), puzzle.undos_used, puzzle.undo_limit, puzzle.temp_slot_used)
 			last_clear["daily"] = false
 			progress.finish_temp()
+			var elapsed := int(Time.get_unix_time_from_system() * 1000.0) - level_started_ms
+			analytics.track("level_complete", {
+				"level_id": int(puzzle.id),
+				"stars": int(last_clear.get("stars", 1)),
+				"duration_s": maxi(0, elapsed / 1000),
+				"undos": puzzle.undos_used,
+				"temp_slot_used": puzzle.temp_slot_used,
+				"coins_earned": int(last_clear.get("coins", 0)),
+			})
+			if int(last_clear.get("coins", 0)) > 0:
+				analytics.track("assist_offer_shown", {"type": "double_coins", "source": "rewarded"}, "double-%d" % level_token)
 			if progress.on_main_clear(int(puzzle.id)):
 				progress.stamp_ad()
+				analytics.track("ad_impression", {"format": "interstitial", "placement": "main_clear", "simulated": true}, "ad-break-%d" % level_token)
 				_show_interstitial()
 			else:
 				_show_modal("win")
 	elif puzzle.is_soft_fail():
+		analytics.track("level_fail_soft", {"level_id": int(puzzle.id), "reason": "no_moves"}, "fail-%d" % level_token)
 		_show_modal("fail")
 
 
@@ -351,6 +393,9 @@ func _undo() -> void:
 	if puzzle.history.is_empty():
 		_set_status("Nothing to undo.")
 		return
+	if puzzle.free_undos_left <= 0:
+		analytics.track("assist_offer_shown", {"type": "undo", "source": "coin"}, "undo-coin-%d" % level_token)
+		analytics.track("assist_offer_shown", {"type": "undo", "source": "rewarded"}, "undo-reward-%d" % level_token)
 	if puzzle.free_undos_left > 0:
 		if not puzzle.undo():
 			_set_status("Nothing to undo.")
@@ -367,6 +412,7 @@ func _undo() -> void:
 		progress.save_file()
 		_set_status("Nothing to undo.")
 		return
+	analytics.track("assist_accepted", {"type": "undo", "source": "coin"})
 	_after_undo("Undo for 50 coins. The coins are not refunded.")
 
 
@@ -381,6 +427,8 @@ func _after_undo(note: String) -> void:
 
 
 func _restart() -> void:
+	if puzzle != null:
+		analytics.track("level_fail_soft", {"level_id": int(puzzle.id), "reason": "restart"})
 	_load_current("Restarted. Free retry.")
 
 
@@ -548,6 +596,7 @@ func _store_offers() -> void:
 
 func _mark_no_forced_ads() -> void:
 	_pending_kind = "purchase"
+	_pending_sku = "no_forced_ads"
 	_pending_txn = "noforced-%d" % (offers.next_id + 1)
 	_pending_coins = 0
 	_pending_consumable = false
@@ -557,6 +606,7 @@ func _mark_no_forced_ads() -> void:
 func _arm_pack(sku: String) -> void:
 	var pack: Dictionary = ProgressScript.PACKS[sku]
 	_pending_kind = "purchase"
+	_pending_sku = sku
 	_pending_txn = "pack%s-%d" % [sku, offers.next_id + 1]
 	_pending_coins = int(pack["coins"])
 	_pending_consumable = true
@@ -572,6 +622,7 @@ func _arm_reward_undo() -> void:
 		_set_status("The local test provider is busy. Nothing was spent.")
 		return
 	progress.stamp_ad()
+	analytics.track("ad_impression", {"format": "rewarded", "placement": "undo", "simulated": true})
 	_pending_kind = "undo"
 	_reward_id = int(begun.get("id", -1))
 	_set_status("Simulated reward undo is showing. Choose a result in Settings. Cancel spends nothing.")
@@ -584,6 +635,7 @@ func _buy_temp() -> void:
 	if bool(result.get("ok", false)):
 		puzzle.extra_slot = true
 		puzzle.temp_slot_used = true
+		analytics.track("assist_accepted", {"type": "slot", "source": "coin"})
 		_set_status("Extra hold is active for this unfinished ship. Undo will not remove it.")
 		_refresh()
 	elif str(result.get("reason", "")) == "active":
@@ -603,6 +655,7 @@ func _arm_reward_temp() -> void:
 		_set_status("The local test provider is busy. Nothing was spent.")
 		return
 	progress.stamp_ad()
+	analytics.track("ad_impression", {"format": "rewarded", "placement": "temp_hold", "simulated": true})
 	_pending_kind = "temp"
 	_reward_id = int(begun.get("id", -1))
 	_set_status("Simulated extra hold. One unfinished level, then it clears. Choose a result in Settings.")
@@ -624,6 +677,7 @@ func _start_test_reward() -> void:
 		settings_note.text = "The local test provider is busy. No reward was granted."
 		return
 	progress.stamp_ad()
+	analytics.track("ad_impression", {"format": "rewarded", "placement": "demo", "simulated": true})
 	_pending_kind = "reward"
 	_reward_id = int(begun.get("id", -1))
 	settings_note.text = "Simulated reward is showing. Local test, not an ad network. Choose one result."
@@ -636,6 +690,15 @@ func _finish_test_reward(outcome: String) -> void:
 		if bool(bought.get("ok", false)):
 			progress.coins += int(bought.get("coins", 0))
 			_store_offers()
+			var price := "9.99" if _pending_sku == "no_forced_ads" else str(ProgressScript.PACKS[_pending_sku]["usd"])
+			analytics.track("iap_purchase", {
+				"sku": _pending_sku,
+				"price_usd": price,
+				"currency": "USD",
+				"simulated": true,
+			}, "iap-" + _pending_txn)
+			if _pending_sku == "no_forced_ads":
+				analytics.track("no_ads_active", {"active": true})
 			settings_note.text = "Simulated purchase completed once. Coins %d. Local test, not a checkout." % progress.coins
 		else:
 			settings_note.text = "No purchase: %s. Coins stayed %d." % [str(bought.get("reason", "")), progress.coins]
@@ -651,7 +714,9 @@ func _finish_test_reward(outcome: String) -> void:
 	if not bool(result.get("granted", false)):
 		settings_note.text = "No reward: %s." % str(result.get("reason", ""))
 		return
+	analytics.track("ad_reward_earned", {"placement": _pending_kind, "simulated": true}, "reward-%d" % _reward_id)
 	if _pending_kind == "undo" and puzzle != null and not puzzle.history.is_empty() and puzzle.undo():
+		analytics.track("assist_accepted", {"type": "undo", "source": "rewarded"})
 		_after_undo("Simulated reward undo. Nothing was spent.")
 		settings_note.text = "One undo granted. Coins stayed %d." % progress.coins
 	elif _pending_kind == "temp" and puzzle != null:
@@ -659,12 +724,14 @@ func _finish_test_reward(outcome: String) -> void:
 		if bool(granted.get("ok", false)):
 			puzzle.extra_slot = true
 			puzzle.temp_slot_used = true
+			analytics.track("assist_accepted", {"type": "slot", "source": "rewarded"})
 			_refresh()
 		settings_note.text = "Extra hold granted for this unfinished ship. Coins stayed %d." % progress.coins
 	elif _pending_kind == "double" and not playing_daily and not _doubled and int(last_clear.get("coins", 0)) > 0:
 		var bonus: int = int(last_clear.get("coins", 0))
 		progress.coins += bonus
 		_doubled = true
+		analytics.track("assist_accepted", {"type": "double_coins", "source": "rewarded"})
 		progress.save_file()
 		settings_note.text = "Doubled once. +%d coins, matching the clear. Balance %d." % [bonus, progress.coins]
 		if double_button != null:
@@ -684,12 +751,20 @@ func _double_clear() -> void:
 	if not bool(begun.get("ok", false)):
 		return
 	progress.stamp_ad()
+	analytics.track("ad_impression", {"format": "rewarded", "placement": "double_coins", "simulated": true})
 	_pending_kind = "double"
 	_reward_id = int(begun.get("id", -1))
 	var outcomes := modal.find_child("ModalOutcomes", true, false)
 	if outcomes != null:
 		outcomes.visible = true
 	modal_body.text += "\nSimulated double is waiting. The bonus matches this clear only."
+
+
+func _toggle_event_log() -> void:
+	if event_log == null:
+		return
+	event_log.visible = not event_log.visible
+	event_log.text = analytics.recent_text(12)
 
 
 func _refresh_settings() -> void:
@@ -943,6 +1018,15 @@ func _build_settings() -> void:
 	inner.add_theme_constant_override("separation", 12)
 	scroll.add_child(inner)
 	inner.add_child(_label("Settings", 40, CREAM))
+	var log_button := _action_button("Local event log", Color("d7e4ea"), INK)
+	log_button.custom_minimum_size = Vector2(0, 64)
+	log_button.add_theme_font_size_override("font_size", 20)
+	log_button.pressed.connect(_toggle_event_log)
+	inner.add_child(log_button)
+	event_log = _label("", 16, CREAM)
+	event_log.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	event_log.visible = false
+	inner.add_child(event_log)
 	var top_back := _action_button("Back", GOLD, INK)
 	top_back.custom_minimum_size = Vector2(0, 72)
 	top_back.pressed.connect(_leave_settings)
@@ -1080,6 +1164,8 @@ func _note_coach(action: String) -> void:
 
 
 func _advance_coach() -> void:
+	var step_name := coach_lines[coach_step] if coach_step < coach_lines.size() else "coach"
+	analytics.track("ftue_step", {"step_name": step_name, "success": true})
 	coach_step += 1
 	if coach_step >= coach_lines.size():
 		_finish_coach()
@@ -1091,6 +1177,7 @@ func _finish_coach() -> void:
 	if coach == null or puzzle == null:
 		return
 	coach.visible = false
+	analytics.track("ftue_step", {"step_name": "skip_or_done", "success": true}, "ftue-done-%d" % int(puzzle.id))
 	if not progress.seen_ftue(int(puzzle.id)):
 		progress.mark_ftue(int(puzzle.id))
 		progress.save_file()
