@@ -3,6 +3,7 @@ extends SceneTree
 const PuzzleScript := preload("res://scripts/puzzle.gd")
 const ProgressScript := preload("res://scripts/progress.gd")
 const OffersScript := preload("res://scripts/offers.gd")
+const AnalyticsScript := preload("res://scripts/analytics.gd")
 
 var failures := 0
 
@@ -41,6 +42,7 @@ func _run() -> void:
 	_check_scoring_and_save()
 	_check_m4(levels[0], levels[2])
 	_check_m5()
+	_check_m6()
 
 	var open1 := _search(levels[0], true)
 	_check(int(open1["solution"]) == 9, "level 1 solution length %s" % str(open1["solution"]))
@@ -519,6 +521,34 @@ func _check_m5_rules(_offers) -> void:
 	for path in ["user://m5_undo.cfg", "user://m5_temp.cfg", "user://m5_ads.cfg", "user://m5_early.cfg"]:
 		if FileAccess.file_exists(path):
 			DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+
+
+func _check_m6() -> void:
+	var log = AnalyticsScript.new()
+	log.path = "user://m6_analytics.json"
+	if FileAccess.file_exists(log.path):
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(log.path))
+	log.boot()
+	var attempt := log.next_attempt(1)
+	var recorded := log.track("level_start", {"level_id": 1, "attempt_n": attempt, "chapter": "sydney"}, "start-1")
+	var duplicate := log.track("level_start", {"level_id": 1}, "start-1")
+	_check(recorded and not duplicate and log.events.size() == 1, "a repeated callback does not log a second event")
+	var row: Dictionary = log.events[0]
+	_check(str(row.get("session_id", "")) != "" and str(row.get("app_version", "")) != "" and str(row.get("install_id", "")).begins_with("local-") and str(row.get("ts_utc", "")) != "", "events carry session, version, install id, and UTC time")
+	var params: Dictionary = row.get("params", {})
+	_check(int(params.get("level_id", 0)) == 1 and str(params.get("chapter", "")) == "sydney", "level_start keeps its params")
+	log.track("ad_reward_earned", {"placement": "undo", "simulated": true}, "reward-9")
+	_check(not log.track("ad_reward_earned", {"placement": "undo", "simulated": true}, "reward-9"), "the same reward id is not logged twice")
+	for i in 210:
+		log.track("app_open", {"n": i})
+	_check(log.events.size() == 200, "the local log stays bounded at 200")
+	log.note_crash("placeholder")
+	_check(str(log.events.back().get("name", "")) == "crash_or_anr", "crash reporting is only a local placeholder")
+	var source := FileAccess.get_file_as_string("res://scripts/analytics.gd")
+	_check(not source.contains("HTTPRequest") and not source.contains("https://"), "the analytics log does not send events off the device")
+	_check(log.path.begins_with("user://"), "the log file stays in local storage")
+	if FileAccess.file_exists(log.path):
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(log.path))
 
 
 func _check(cond: bool, message: String) -> void:

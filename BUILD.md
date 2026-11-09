@@ -96,7 +96,7 @@ Colours: `coral` circle, `teal` square, `gold` triangle, `indigo` diamond.
 - [x] M3b Levels 18–30 with the mechanics already in the game — merged in #4
 - [x] M4 Sydney hub, chunky 2.5D kit, second permanent hold, UTC daily dock, 7-day streak and one freeze token — merged in #5
 - [ ] M5 Simulated monetisation, approved for local testing only. No store SDK, no ad SDK, and not a release build
-- [ ] M6 Analytics (the brief's event list behind one thin wrapper; debug sink first)
+- [ ] M6 Local analytics log for the brief's events. No third-party SDK, no network, and no live keys. Not merged.
 - [ ] M7 Soft-launch build (release signing, compliance checklist, crash tooling, Philippines release candidate)
 
 The brief groups the same work as three milestones (playable prototype, content-complete, soft-launch). This checklist is the engineering split for the repo. M1 here is the brief's playable prototype, narrowed to the colour-stack loop.
@@ -152,9 +152,15 @@ Tobias approved these values for simulated local testing only. They are not prod
 - **Simulated packs.** S is 500 coins at USD 1.99 / AUD 2.99. M is 1500 at USD 4.99 / AUD 7.99. L is 3500 at USD 9.99 / AUD 14.99. Simulated No forced ads is USD 9.99 / AUD 14.99. It turns off the simulated interstitial. Rewarded tests stay available.
 - **Simulated interstitial.** After the first clear of level 10, which itself shows nothing and starts the count at 0, every third later main clear can show one. It is skipped on a fail, restart, daily, open, exit, or during a puzzle. It needs 90 seconds since any simulated ad, including a rewarded one. No forced ads suppresses it. The count still resets, and a skipped one is not saved for later. It appears before the results. The results screen does not show a second one.
 
+## M6 local analytics
+
+Settings has a local event log. It records the brief's events on this device only: app open, FTUE step, level start and complete, soft fail, assist shown and accepted, simulated ad impression and reward, simulated purchase, No forced ads, and the daily dock. There is no push-permission event because this build does not ask for notification permission. `crash_or_anr` is a local placeholder function only. Real crash reporting needs a SDK later. Realistic options, not chosen: Sentry, Firebase Crashlytics, or Godot's own remote logging. None is wired up.
+
+Each event stores a session id, the app version, an anonymous local install id, and a UTC timestamp. The file keeps the latest 200 events in `user://analytics_log.json`. Repeated callbacks with the same id are not written twice. Nothing is sent to a server. Simulated ads and purchases are marked `simulated: true` and are not revenue. `country` is `unknown` because this build does not look up a location.
+
 ## Still not in this build
 
-A real ad network, a real store, production product IDs, conveyor, glass, colour gates, accounts, and analytics. No store listing or device sign-off. A phone clock set forward can collect streak and daily rewards early; that is a known prototype limit.
+A real ad network, a real store, production product IDs, a crash or analytics SDK, conveyor, glass, colour gates, and accounts. No store listing or device sign-off. A phone clock set forward can collect streak and daily rewards early; that is a known prototype limit.
 
 ## Still not in this build
 
